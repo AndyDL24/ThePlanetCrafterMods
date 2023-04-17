@@ -18,6 +18,7 @@ namespace FeatMultiplayer
         static ConfigEntry<int> networkFrequency;
         static ConfigEntry<int> fullSyncDelay;
         static ConfigEntry<int> smallSyncDelay;
+        static ConfigEntry<bool> streamerMode;
 
         static ConfigEntry<bool> hostMode;
         static ConfigEntry<bool> useUPnP;
@@ -27,6 +28,7 @@ namespace FeatMultiplayer
         static ConfigEntry<string> hostColor;
         static ConfigEntry<int> hostLogLevel;
         static ConfigEntry<int> maxClients;
+        static ConfigEntry<string> hostDisplayName;
 
         // client side properties
         static ConfigEntry<string> hostAddress;
@@ -34,6 +36,7 @@ namespace FeatMultiplayer
         static ConfigEntry<string> clientPassword;
         static ConfigEntry<string> clientColor;
         static ConfigEntry<int> clientLogLevel;
+
 
         static ConfigEntry<int> fontSize;
         static ConfigEntry<bool> slowdownConsumption;
@@ -53,6 +56,8 @@ namespace FeatMultiplayer
         internal static readonly Dictionary<string, List<Sprite>> emoteSprites = new();
 
         static readonly object logLock = new object();
+
+        internal static string resourcesPath;
 
         private void Awake()
         {
@@ -79,6 +84,7 @@ namespace FeatMultiplayer
             hostServiceAddress = Config.Bind("Host", "ServiceAddress", "default", "The local IP address the host would listen, '' for auto address, 'default' for first IPv4 local address, 'defaultv6' for first IPv6 local address");
             hostLogLevel = Config.Bind("Host", "LogLevel", 2, "0 - debug+, 1 - info+, 2 - warning+, 3 - error");
             maxClients = Config.Bind("Host", "MaxClients", 4, "Number of clients that can join at a time");
+            hostDisplayName = Config.Bind("Host", "DisplayName", "", "The name to display for the clients. If empty, <Host> is displayed");
 
             hostAddress = Config.Bind("Client", "HostAddress", "", "The IP address where the Host can be located from the client.");
             clientName = Config.Bind("Client", "Name", "Buddy,Dude", "The list of client names to join with.");
@@ -86,14 +92,16 @@ namespace FeatMultiplayer
             clientColor = Config.Bind("Client", "Color", "0.75,0.75,1,1", "The color of the client avatar as comma-separated RGBA floats");
             clientLogLevel = Config.Bind("Client", "LogLevel", 2, "0 - debug+, 1 - info+, 2 - warning+, 3 - error");
 
+            streamerMode = Config.Bind("General", "StreamerMode", false, "Hides the IP addresses in the main menu.");
+
             Assembly me = Assembly.GetExecutingAssembly();
-            string dir = Path.GetDirectoryName(me.Location);
+            resourcesPath = Path.GetDirectoryName(me.Location);
 
-            astronautFront = LoadPNG(Path.Combine(dir, "Astronaut_Front.png"));
-            astronautBack = LoadPNG(Path.Combine(dir, "Astronaut_Back.png"));
+            astronautFront = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Front.png"));
+            astronautBack = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Back.png"));
 
-            astronautFrontHost = LoadPNG(Path.Combine(dir, "Astronaut_Front_Host.png"));
-            astronautBackHost = LoadPNG(Path.Combine(dir, "Astronaut_Back_Host.png"));
+            astronautFrontHost = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Front_Host.png"));
+            astronautBackHost = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Back_Host.png"));
 
             InitReflectiveAccessors();
             
@@ -147,6 +155,7 @@ namespace FeatMultiplayer
         static AccessTools.FieldRef<UiWindowContainer, Inventory> uiWindowContainerRightInventory;
         static AccessTools.FieldRef<Inventory, InventoryDisplayer> inventoryDisplayer;
         static MethodInfo logisticSelectorSetListsDisplay;
+        static AccessTools.FieldRef<PlayerLarvaeAround, int> playerLarvaeAroundNoLarvaeZoneEntered;
 
         static void InitReflectiveAccessors()
         {
@@ -193,6 +202,8 @@ namespace FeatMultiplayer
 
             inventoryDisplayer = AccessTools.FieldRefAccess<Inventory, InventoryDisplayer>("inventoryDisplayer");
             logisticSelectorSetListsDisplay = AccessTools.Method(typeof(LogisticSelector), "SetListsDisplay");
+
+            playerLarvaeAroundNoLarvaeZoneEntered = AccessTools.FieldRefAccess<PlayerLarvaeAround, int>("noLarvaeZoneEntered");
         }
 
     }

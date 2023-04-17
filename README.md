@@ -57,6 +57,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Auto Harvest](#cheat-auto-harvest)
 - [Auto Launch Rockets](#cheat-auto-launch-rockets)
 - [Auto Sequence DNA](#cheat-auto-sequence-dna)
+- [Birthday](#cheat-birthday)
 - [Highlight Nearby Resources](#cheat-highlight-nearby-resources)
 - [Inventory Stacking](#cheat-inventory-stacking)
 - [Machines Deposit Into Remote Containers](#cheat-machines-deposit-into-remote-containers)
@@ -82,6 +83,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Save When Quitting](#ui-save-when-quitting)
 - [Show Consumable Counts](#ui-show-consumable-counts)
 - [Show Container Content Info](#ui-show-container-content-info)
+- [Show ETA](#ui-show-eta)
 - [Show Grab N Mine Count](#ui-show-grab-n-mine-count)
 - [Show MultiTool Mode](#ui-show-multitool-mode)
 - [Show Player Inventory Counts](#ui-show-player-inventory-counts)
@@ -211,7 +213,7 @@ AliasBeans = *Vegetable2Growable
 # Setting type: String
 # Default value: *Vegetable3Growable
 AliasMushroom = *Vegetable3Growable
-```
+
 ## The container name to put cocoa into.
 # Setting type: String
 # Default value: *CookCocoaGrowable
@@ -221,8 +223,9 @@ AliasCocoa = *CookCocoaGrowable
 # Setting type: String
 # Default value: *CookWheatGrowable
 AliasWheat = *CookWheatGrowable
+```
 
-</detauls>
+</details>
 
 ## (Cheat) Auto Launch Rockets
 
@@ -262,12 +265,14 @@ On the recipe side:
 - `*Fertilizer` - where the *Fertilizer* ingredient is searched for.
 - `*TreeRoot` - where the *Tree Root* ingredient is searched for.
 - `*FlowerSeed` - where the various *Flower Seed* ingredient is searched for.
+- `*Phytoplankton` - where the various *Phytoplankton* ingredient is searched for.
 
 On the product side:
 - `*Butterfly` - where to deposit the created *Butterfly larvae* (all kinds).
 - `*Bee` - where to deposit the created *Bee*s.
 - `*Silk` - where to deposit the created *Silk Worm*s.
 - `*TreeSeed` - where to deposit the created *Tree Seed*s (all kinds).
+- `*Fish` - where to deposit the created *Fish* (all kinds).
 
 (Note. Unlike other similar mods, you don't need to start the naming with the star `*` character. The defaults shown are just a convention I use.)
 
@@ -279,7 +284,7 @@ they would both get their ingredients from.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatautosequencedna.cfg`
+<details><summary>akarnokd.theplanetcraftermods.cheatautosequencedna.cfg</summary>
 
 ```
 [General]
@@ -326,6 +331,16 @@ Bee = *Bee
 # Default value: *Silk
 Silk = *Silk
 
+## The name of the container(s) where to look for Phytoplankton.
+# Setting type: String
+# Default value: *Phytoplankton
+Phytoplankton = *Phytoplankton
+
+## The name of the container(s) where to deposit the spawned fish.
+# Setting type: String
+# Default value: *Fish
+Fish = *Fish
+
 [Sequencer]
 
 ## Should the Tree-sequencer auto sequence?
@@ -352,9 +367,8 @@ FlowerSeed = *FlowerSeed
 # Setting type: String
 # Default value: *TreeSeed
 TreeSeed = *TreeSeed
-
-
 ```
+</details>
 
 ## (Cheat) Photomode Hide Water
 
@@ -514,7 +528,7 @@ Remark: `Uranim` is a misspelling in the vanilla game which will probably never 
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatteleportnearestminable.cfg`
+<details><summary>akarnokd.theplanetcraftermods.cheatteleportnearestminable.cfg</summary>
 
 ```
 [General]
@@ -526,8 +540,8 @@ ResourceSet = Cobalt,Silicon,Iron,ice,Magnesium,Titanium,Aluminium,Uranim,Iridiu
 
 ## List of comma-separated larvae ids to look for.
 # Setting type: String
-# Default value: LarvaeBase1,LarvaeBase2,LarvaeBase3,Butterfly11Larvae,Butterfly12Larvae,Butterfly13Larvae,Butterfly141Larvae,Butterfly15Larvae
-LarvaeSet = LarvaeBase1,LarvaeBase2,LarvaeBase3,Butterfly11Larvae,Butterfly12Larvae,Butterfly13Larvae,Butterfly141Larvae,Butterfly15Larvae
+# Default value: LarvaeBase1,LarvaeBase2,LarvaeBase3,Butterfly11Larvae,Butterfly12Larvae,Butterfly13Larvae,Butterfly14Larvae,Butterfly15Larvae,Butterfly16Larvae,Butterfly17Larvae,Butterfly18Larvae
+LarvaeSet = LarvaeBase1,LarvaeBase2,LarvaeBase3,Butterfly11Larvae,Butterfly12Larvae,Butterfly13Larvae,Butterfly14Larvae,Butterfly15Larvae,Butterfly16Larvae,Butterfly17Larvae,Butterfly18Larvae
 
 ## Press this key (without modifiers) to enable automatic mining/grabbing in a radius.
 # Setting type: String
@@ -544,6 +558,7 @@ Radius = 90
 # Default value: 5
 Delay = 5
 ```
+</details>
 
 ## (Cheat) Minimap
 
@@ -1616,6 +1631,22 @@ Toggle_Auto_Move_Key = CapsLock
 ## (UI) Logistic Select All
 
 Select all groups in the logistic screen by pressing <kbd>Ctrl+A</kbd>.
+
+### Configuration
+
+None.
+
+## (Cheat) Birthday
+
+Re-enables the hidden Birthday underground base and the oven in there.
+
+### Configuration
+
+None.
+
+## (UI) Show ETA
+
+Show the time unit the next terraformation stage given the current speed of terraformation.
 
 ### Configuration
 

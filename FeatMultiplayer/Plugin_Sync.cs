@@ -42,9 +42,11 @@ namespace FeatMultiplayer
 
         static void SendAllInventories()
         {
-            HashSet<int> ignoreInventories = new();
-            ignoreInventories.Add(1);
-            ignoreInventories.Add(2);
+            HashSet<int> ignoreInventories = new()
+            {
+                1,
+                2
+            };
             foreach (var cc in _clientConnections.Values)
             {
                 if (cc.shadowBackpack != null)
@@ -216,6 +218,19 @@ namespace FeatMultiplayer
                     }
                 }
                 LogInfo("Player " + playerName + " has no saved position info");
+                var pm = GetPlayerMainController();
+                if (pm != null)
+                {
+                    var pos2 = pm.transform.position;
+                    LogInfo("Moving " + playerName + " to the host at " + pos2);
+
+                    var msg = new MessageMovePlayer()
+                    {
+                        position = pos2
+                    };
+                    cc.Send(msg);
+                    cc.Signal();
+                }
             }
             else
             {
