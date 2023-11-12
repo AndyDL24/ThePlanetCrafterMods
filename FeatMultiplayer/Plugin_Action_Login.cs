@@ -37,6 +37,11 @@ namespace FeatMultiplayer
                 string[] users = hostAcceptName.Value.Split(',');
                 string[] passwords = hostAcceptPassword.Value.Split(',');
 
+                if (users.Length != passwords.Length)
+                {
+                    LogError("The number of listed users and passwords in the config must match! U-" + users.Length + " != P-" + passwords.Length);
+                }
+
                 for (int i = 0; i < Math.Min(users.Length, passwords.Length); i++)
                 {
                     if (users[i] == ml.user && passwords[i] == ml.password)
@@ -65,14 +70,12 @@ namespace FeatMultiplayer
 
                             cc.Send(CreateWelcome());
                             cc.Signal();
-                            cc.Send(new MessageGameMode()
-                            {
-                                modeIndex = (int)GameSettingsHandler.GetGameMode()
-                            });
-                            cc.Signal();
+                            // FIXME 0.9.x introduced a lot more game mode settings.
+                            SendGameMode(cc);
 
                             lastFullSync = Time.realtimeSinceStartup;
                             SendFullState();
+                            SendDroneTargets();
                             SendTerrainLayers();
                             LaunchMeteorEventAfterLogin();
                             SendMessages();
@@ -84,13 +87,13 @@ namespace FeatMultiplayer
                         }
                         else
                         {
-                            LogInfo("User already logged in: " + ml.user);
+                            LogWarning("User already logged in: " + ml.user);
                             NotifyUser("User already logged in: " + ml.user);
                         }
                     }
                 }
 
-                LogInfo("User login failed: " + ml.user);
+                LogWarning("User login failed: " + ml.user);
                 cc.Send(EAccessDenied);
                 cc.Signal();
                 cc.Disconnect();

@@ -301,6 +301,31 @@ namespace FeatMultiplayer
                 Receive(cc, musd);
             }
             else
+            if (MessageDronePosition.TryParse(message, out var mdp))
+            {
+                Receive(cc, mdp);
+            }
+            else
+            if (MessageDroneStats.TryParse(message, out var mds))
+            {
+                Receive(cc, mds);
+            }
+            else
+            if (MessageLaunchTrade.TryParse(message, out var mlt))
+            {
+                Receive(cc, mlt);
+            }
+            else
+            if (MessageConsume.TryParse(message, out var mcs))
+            {
+                Receive(cc, mcs);
+            }
+            else
+            if (MessageDeconstructPanel.TryParse(message, out var mdp1))
+            {
+                Receive(cc, mdp1);
+            }
+            else
             if (message == "ENoClientSlot" && updateMode == MultiplayerMode.CoopClient)
             {
                 NotifyUserFromBackground("Host full");
@@ -594,9 +619,34 @@ namespace FeatMultiplayer
                         ReceiveMessageStoryEvents(mse);
                         break;
                     }
+                case MessageDronePosition mdp:
+                    {
+                        ReceiveMessageDronePosition(mdp);
+                        break;
+                    }
                 case MessageUpdateSupplyDemand musd:
                     {
                         ReceiveMessageUpdateSupplyDemand(musd);
+                        break;
+                    }
+                case MessageDroneStats mds:
+                    {
+                        ReceiveMessageDroneStats(mds);
+                        break;
+                    }
+                case MessageLaunchTrade mlt:
+                    {
+                        ReceiveMessageLaunchTrade(mlt);
+                        break;
+                    }
+                case MessageConsume mcs:
+                    {
+                        ReceiveMessageConsume(mcs);
+                        break;
+                    }
+                case MessageDeconstructPanel mdp1:
+                    {
+                        ReceiveMessageDeconstructPanel(mdp1);
                         break;
                     }
                 default:

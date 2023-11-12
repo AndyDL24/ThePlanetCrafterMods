@@ -138,6 +138,7 @@ namespace FeatMultiplayer
         static void SendPeriodicState()
         {
             SendTerraformState();
+            SendDroneStats();
             SignalAllClients();
         }
 
@@ -267,6 +268,41 @@ namespace FeatMultiplayer
             {
                 LogInfo("Warning, no backpack info for " + playerName + " (" + backpackWoId + ")");
             }
+        }
+
+        static void SendDroneTargets()
+        {
+            foreach (var kw in droneTargetCache)
+            {
+                var msg = new MessageDronePosition();
+                msg.id = kw.Key;
+                msg.position = kw.Value;
+                SendAllClients(msg);
+            }
+        }
+
+        static void SendGameMode(ClientConnection cc)
+        {
+            var settings = Managers.GetManager<GameSettingsHandler>().GetCurrentGameSettings();
+            cc.Send(new MessageGameMode()
+            {
+                gameMode = settings.gameMode,
+                dyingConsequences = settings.gameDyingConsequences,
+                worldSeed = settings.worldSeed,
+                unlockedSpaceTrading = settings.unlockedSpaceTrading,
+                unlockedOreExtractors = settings.unlockedOreExtrators,
+                unlockedDrones = settings.unlockedDrones,
+                unlockedAutoCrafter = settings.unlockedAutocrafter,
+                unlockedTeleporters = settings.unlockedTeleporters,
+                unlockedEverything = settings.unlockedEverything,
+                freeCraft = settings.freeCraft,
+                randomizeMineables = settings.randomizeMineables,
+                terraformationPace = settings.modifierTerraformationPace,
+                gaugeDrain = settings.modifierGaugeDrain,
+                powerConsumption = settings.modifierPowerConsumption,
+                meteoOccurrence = settings.modifierMeteoOccurence
+            });
+            cc.Signal();
         }
     }
 }

@@ -8,7 +8,7 @@ using UnityEngine.UI;
 
 namespace UIShowConsumableCount
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.uishowconsumablecount", "(UI) Show Consumable Counts", "1.0.0.4")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.uishowconsumablecount", "(UI) Show Consumable Counts", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
 
@@ -58,9 +58,9 @@ namespace UIShowConsumableCount
         {
             Logger.LogInfo("Begin adding UI elements");
 
-            healthCount = AddTextForGauge(UnityEngine.Object.FindObjectOfType<PlayerGaugeHealth>(), "FoodConsumableCounter");
-            waterCount = AddTextForGauge(UnityEngine.Object.FindObjectOfType<PlayerGaugeThirst>(), "WaterConsumableCounter");
-            oxygenCount = AddTextForGauge(UnityEngine.Object.FindObjectOfType<PlayerGaugeOxygen>(), "OxygenConsumableCounter");
+            healthCount = AddTextForGauge(FindAnyObjectByType<PlayerGaugeHealth>(), "FoodConsumableCounter");
+            waterCount = AddTextForGauge(FindAnyObjectByType<PlayerGaugeThirst>(), "WaterConsumableCounter");
+            oxygenCount = AddTextForGauge(FindAnyObjectByType<PlayerGaugeOxygen>(), "OxygenConsumableCounter");
 
             counts[DataConfig.UsableType.Eatable] = healthCount;
             counts[DataConfig.UsableType.Drinkable] = waterCount;

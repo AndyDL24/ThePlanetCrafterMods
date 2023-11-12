@@ -8,9 +8,9 @@ using System.Reflection;
 using BepInEx.Logging;
 using System.Linq;
 
-namespace UICraftEquipmentInPlace
+namespace UICraftEquipmentInplace
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.uicraftequipmentinplace", "(UI) Craft Equipment Inplace", "1.0.0.13")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.uicraftequipmentinplace", "(UI) Craft Equipment Inplace", PluginInfo.PLUGIN_VERSION)]
     [BepInDependency("akarnokd.theplanetcraftermods.cheatinventorystacking", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency("AdvancedMode", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(mobileCrafterGuid, BepInDependency.DependencyFlags.SoftDependency)]
@@ -37,7 +37,7 @@ namespace UICraftEquipmentInPlace
             Logger.LogInfo($"Plugin is loaded!");
             logger = Logger;
 
-            if (Chainloader.PluginInfos.TryGetValue("AdvancedMode", out PluginInfo pi))
+            if (Chainloader.PluginInfos.TryGetValue("AdvancedMode", out BepInEx.PluginInfo pi))
             {
                 Logger.LogInfo("Disabling AdvancedMode's Free Crafting mode.");
                 FieldInfo fi = AccessTools.Field(pi.Instance.GetType(), "Crafts");
@@ -72,7 +72,8 @@ namespace UICraftEquipmentInPlace
             playerEquipmentHasCleanConstructionChip = AccessTools.Field(typeof(PlayerEquipment), "hasCleanConstructionChip");
             playerEquipmentHasDeconstructT2 = AccessTools.Field(typeof(PlayerEquipment), "hasDeconstructT2");
 
-            Harmony.CreateAndPatchAll(typeof(Plugin));
+            var harmony = Harmony.CreateAndPatchAll(typeof(Plugin));
+            LibCommon.SaveModInfo.Patch(harmony);
         }
 
         [HarmonyPrefix]
@@ -82,22 +83,6 @@ namespace UICraftEquipmentInPlace
             //logger.LogInfo("Inventory_RemoveItems called");
             // no AdvancedMode || FreeCrafts disabled || inventory is the equipment
             return crafts == null || !crafts.Value || __instance.GetId() == 2;
-        }
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(PlayModeHandler), nameof(PlayModeHandler.GetFreeCraft))]
-        static void PlayModeHandler_GetFreeCraft(ref bool __result, DataConfig.PlayMode ___playMode)
-        {
-            //logger.LogInfo("PlayModeHandler_GetFreeCraft called");
-            if (crafts != null)
-            {
-                __result = crafts.Value;
-            } 
-            else 
-            {
-                __result = ___playMode == DataConfig.PlayMode.Free
-                    || ___playMode == DataConfig.PlayMode.FreeLimited;
-            }
         }
 
         [HarmonyPrefix]
@@ -114,7 +99,7 @@ namespace UICraftEquipmentInPlace
             ref int ___totalCraft)
         {
             // In Free Craft mode, skip this mod.
-            bool isFreeCraft = Managers.GetManager<PlayModeHandler>().GetFreeCraft();
+            bool isFreeCraft = Managers.GetManager<GameSettingsHandler>().GetCurrentGameSettings().GetFreeCraft();
 
             // Unfortunately, the whole method has to be rewritten
             DataConfig.EquipableType equipType = groupItem.GetEquipableType();

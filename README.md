@@ -12,7 +12,7 @@ Guide on dnSpy-based manual patches: https://steamcommunity.com/sharedfiles/file
 
 :arrow_down_small: Download files from the releases: https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest
 
-## Supported Game Version: 0.7.009
+## Supported Game Version: 0.9.010
 
 Public releases are relatively infrequent (once in a few months). I'll do my best to keep my mods up-to-date in case something drastic changes inside the main game.
 
@@ -62,20 +62,20 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Inventory Stacking](#cheat-inventory-stacking)
 - [Machines Deposit Into Remote Containers](#cheat-machines-deposit-into-remote-containers)
 - [Minimap](#cheat-minimap)
+- [More Trade](#cheat-more-trade)
 - [Photomode Hide Water](#cheat-photomode-hide-water)
+- [Recyclers Deposit Into Remote Containers](#cheat-recyclers-deposit-into-remote-containers)
 - [Teleport to Nearest Minable](#cheat-teleport-to-nearest-minable)
 
 ### User Interface or Quality of Life
 
 - [Beacon Text](#ui-beacon-text)
 - [Craft Equipment Inplace](#ui-craft-equipment-inplace)
-- [Český překlad](#ui-cesky-preklad) (Czech translation)
 - [Customize Inventory Sort Order](#ui-customize-inventory-sort-order)
 - [Don't Close Craft Window](#ui-dont-close-craft-window)
 - [Hotbar](#ui-hotbar)
 - [Inventory Move Multiple Items](#ui-inventory-move-multiple-items)
 - [Logistic Select All](#logistic-select-all)
-- [Magyar Fordítás](#ui-hungarian-translation) (Hungarian translation)
 - [Menu Shortcut Keys](#ui-menu-shortcut-keys)
 - [Overview Panel](#ui-overview-panel)
 - [Pin Recipe to Screen](#ui-pin-recipe-to-screen)
@@ -90,12 +90,20 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Show Player Tooltip Item Count](#ui-show-player-tooltip-item-count)
 - [Show Rocket Counts](#ui-show-rocket-counts)
 - [Sort Saves](#ui-sort-saves)
+- [Telemetry Font Sizer](#ui-telemetry-font-sizer)
+
+### Translations
+
+- [Český překlad](#ui-cesky-preklad) (Czech translation)
+- [Estonian Translation](#ui-estonian-translation)
+- [Magyar Fordítás](#ui-hungarian-translation) (Hungarian translation)
 - [Traduzione Italiana](#ui-italian-translation) (Italian translation)
+- [Polish Translation](#ui-polish-translation)
+- [Romanian Translation](#ui-romanian-translation)
 
 ### Other
 
 - [Reduce Save Size](#perf-reduce-save-size)
-- [Support Mods with Load n Save](#lib-support-mods-with-load-n-save)
 - [Save Auto Backup](#save-auto-backup)
 - [Auto Save](#save-auto-save)
 - [Unbrick Save](#fix-unbrick-save)
@@ -107,6 +115,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 
 - [Auto Move](#lathrey-auto-move)
 - [Disable Build Constraints](#lathrey-disable-build-constraints)
+- [Improve Performance](#lathrey-improve-performance)
 
 ## (Cheat) Asteroid Landing Position Override
 
@@ -261,11 +270,13 @@ following naming convention is used (can be changed in the config file):
 
 On the recipe side:
 - `*Larvae` - where the various common, uncommon and rare larvae will be searched for.
-- `*Mutagen` - where the *Mutagen* ingredient is searched for.
-- `*Fertilizer` - where the *Fertilizer* ingredient is searched for.
+- `*Mutagen` - where the *Mutagen* ingredients are searched for.
+- `*Fertilizer` - where the *Fertilizer* ingredients are searched for.
 - `*TreeRoot` - where the *Tree Root* ingredient is searched for.
-- `*FlowerSeed` - where the various *Flower Seed* ingredient is searched for.
-- `*Phytoplankton` - where the various *Phytoplankton* ingredient is searched for.
+- `*FlowerSeed` - where the various *Flower Seed* ingredients are searched for.
+- `*Phytoplankton` - where the various *Phytoplankton* ingredients are searched for.
+- `*Bacteria` - where the *Bacteria* ingredient is searched for.
+- `*FrogEgg` - where the *Frog Eggs* ingredients are searched for.
 
 On the product side:
 - `*Butterfly` - where to deposit the created *Butterfly larvae* (all kinds).
@@ -273,6 +284,7 @@ On the product side:
 - `*Silk` - where to deposit the created *Silk Worm*s.
 - `*TreeSeed` - where to deposit the created *Tree Seed*s (all kinds).
 - `*Fish` - where to deposit the created *Fish* (all kinds).
+- `*FrogEgg` - where to deposit the created *Frog Eggs* (all kinds).
 
 (Note. Unlike other similar mods, you don't need to start the naming with the star `*` character. The defaults shown are just a convention I use.)
 
@@ -293,6 +305,11 @@ they would both get their ingredients from.
 # Setting type: Boolean
 # Default value: false
 DebugMode = false
+
+## The maximum distance to look for the named containers. 0 means unlimited.
+# Setting type: Int32
+# Default value: 30
+Range = 30
 
 [Incubator]
 
@@ -341,6 +358,16 @@ Phytoplankton = *Phytoplankton
 # Default value: *Fish
 Fish = *Fish
 
+## The name of the container(s) where to to look for frog eggs.
+# Setting type: String
+# Default value: *FrogEgg
+FrogEgg = *FrogEgg
+
+## The name of the container(s) where to to look for bacteria samples.
+# Setting type: String
+# Default value: *Bacteria
+Bacteria = *Bacteria
+
 [Sequencer]
 
 ## Should the Tree-sequencer auto sequence?
@@ -367,6 +394,16 @@ FlowerSeed = *FlowerSeed
 # Setting type: String
 # Default value: *TreeSeed
 TreeSeed = *TreeSeed
+
+## The name of the container(s) where to look for Phytoplankton.
+# Setting type: String
+# Default value: *Phytoplankton
+Phytoplankton = *Phytoplankton
+
+## The name of the container(s) where to look for fertilizer.
+# Setting type: String
+# Default value: *Fertilizer
+Fertilizer = *Fertilizer
 ```
 </details>
 
@@ -480,9 +517,10 @@ You can also make the water and methane extractors deposit remotely by naming co
 
 Biodome T2 generated tree barks can be deposited remotely too via `*TreeRoot`.
 
-With Insects & Waterfalls update, the mod also works with Silk generators:
+With Insects & Waterfalls update, the mod also works with Silk generators and Beehives:
 
 - `*Silk`
+- `*Bee1Larvae`
 
 You can override the default naming convention via the `Aliases` configuration option by listing the resource id and the target naming:
 
@@ -648,12 +686,32 @@ found all places where this can be bad. Backup your saves!
 ## The stack size of all item types in the inventory
 # Setting type: Int32
 # Default value: 10
-StackSize = 10
+StackSize = 250
 
 ## The font size for the stack amount
 # Setting type: Int32
 # Default value: 25
 FontSize = 25
+
+## Should the trade rockets' inventory stack?
+# Setting type: Boolean
+# Default value: false
+StackTradeRockets = false
+
+## Should the shredder inventory stack?
+# Setting type: Boolean
+# Default value: false
+StackShredder = false
+
+## Should the Optimizer's inventory stack?
+# Setting type: Boolean
+# Default value: false
+StackOptimizer = false
+
+## Should the player backpack stack?
+# Setting type: Boolean
+# Default value: true
+StackBackpack = true
 ```
 
 ## (Perf) Load Inventories Faster
@@ -1290,15 +1348,13 @@ még nem vagy már elfogadott fordításokat tartalmazza. Néhány fordítás eg
 
 Patches in labels and enables switching to Italian ("Italiano") in the game's options screen. Note that some labels do not change when switching to Italian the first time. This is a bug in the vanilla game's UI and can be resolved by restarting the game.
 
-The translation was kindly provided by [Lorenza](https://github.com/LorenzaMX) (Discord: 𝕷𝖔𝖗𝖊𝖓𝖟𝖆#8158).
+The translation was provided by someone who wishes to remain anonymous.
 
 :information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Italian myself.
 
 :it:
 
 Patch nelle etichette e abilita il passaggio all'italiano ("Italiano") nella schermata delle opzioni del gioco. Si noti che alcune etichette non cambiano quando si passa all'italiano per la prima volta. Questo è un bug nell'interfaccia utente del gioco vanilla e può essere risolto riavviando il gioco.
-
-La traduzione è stata gentilmente fornita da [Lorenza](https://github.com/LorenzaMX) (Discord: 𝕷𝖔𝖗𝖊𝖓𝖟𝖆#8158).
 
 
 ### Configuration
@@ -1342,6 +1398,55 @@ TBD
 
 Only diagnostic options. Not relevant for the player.
 
+## (UI) Romanian Translation
+
+Acest mod încarcă etichete în limba română și vă permite să alegeți „Română” în ecranul de selecție a limbii (Meniu principal> Opțiuni). După aceea, se recomandă să reporniți jocul.
+
+A fost un efort oficial de traducere bazat pe comunitate, dar recent a fost închis din motive necunoscute. A avut probleme de la sine. Acest mod ne permite să actualizăm traducerile mult mai rapid pe măsură ce accesul timpuriu progresează.
+
+Traducerea a fost oferită cu amabilitate de Neckro (Discord: neckro#1989).
+
+:information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Romanian myself.
+
+### Configuration
+
+Only diagnostic options. Not relevant for the player.
+
+## (UI) Estonian Translation
+
+Patches in labels and enables switching to Estonian ("Eesti") in the game's options screen. Note that some labels do not change when switching to Estonian the first time. This is a bug in the vanilla game's UI and can be resolved by restarting the game.
+
+The translation was kindly provided by Annika on the Official Discord of the game.
+
+:information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Estonian myself.
+
+### Configuration
+
+Only diagnostic options. Not relevant for the player.
+
+## (UI) Telemetry Font Sizer
+
+Allows modifying the font size on the bottom left (coordinates) and bottom right (version, framerate) telemetry text display.
+
+### Configuration
+
+`akarnokd.theplanetcraftermods.uitelemetryfontsizer`
+
+```
+[General]
+
+## The font size of the left side text block (coordinates). -1 to use the default.
+# Setting type: Int32
+# Default value: -1
+LeftFontSize = -1
+
+## The font size of the right side text block (version + framerate). -1 to use the default.
+# Setting type: Int32
+# Default value: -1
+RightFontSize = -1
+```
+
+
 ## (UI) Menu Shortcut Keys
 
 Adds (configurable) keyboard shortcuts to the player's backpack screen, container screens (chests) and certain machine screens (to be expanded later).
@@ -1362,6 +1467,7 @@ Currently, the following shortcuts are supported:
 - Sequencer and Incubator
   - Sort backpack (default <kbd>G</kbd>)
 
+:note: The configuration uses the [Unity action path syntax](https://docs.unity3d.com/Packages/com.unity.inputsystem@1.0/api/UnityEngine.InputSystem.InputControlPath.html), such as `<Keyboard>/F`.
 
 ### Configuration
 
@@ -1473,108 +1579,29 @@ None.
 
 ## (Lib) Support Mods with Load n Save
 
-This mod alters the loading and saving of the game by parsing/appending custom information based on
-registered callbacks. These callbacks can be registered by other plugins and thus they can use this
-plugin for save-specific persistency.
+:warning: Discontinued. Use a known item id and store excess data in its text attribute.
 
-Here is an example plugin that utilizes this plugin:
+### How to achieve save-mod persistence?
 
-https://github.com/akarnokd/ThePlanetCrafterMods/blob/main/ExampleModLoadSaveSupportSoft/Plugin.cs
+Previously, this mod expanded the load and save process by appending more sections to the save. After I gained more experience with the game's code, it turns out this is/was completely unnnecessary.
 
-### Developer notes
+A safer and compatible method is to convert the mod data into text and set it on a item id with known identifier. For example, a hidden Iron or Container1 item (i.e., their position and rotation are zeros).
 
-#### Dependency setup
+You can use almost all identifiers between 0 and 200.000.000 with one restriction: the id can't start with `10` because those indicate pre-placed scene objects.
 
-To add a (soft) dependency to this plugin in your own plugin, use the `BepInDependency` annotation
-with the guid (`akarnokd.theplanetcraftermods.libmodloadsavesupport`) of this plugin:
+There is also the caveat of the text format: you can't have the pipe `|` or `@` characters in them (`|` is the line separator and `@` is the section separator). These charcters are not escaped by default in JSON.
 
-```cs
-[BepInPlugin(guid, "(Example) Soft Dependency on ModLoadSaveSupport", "1.0.0.0")]
-[BepInDependency(libModLoadSaveSupportGuid, BepInDependency.DependencyFlags.SoftDependency)]
-public class Plugin : BaseUnityPlugin
-{
-    const string libModLoadSaveSupportGuid = "akarnokd.theplanetcraftermods.libmodloadsavesupport";
-
-    const string guid = "akarnokd.theplanetcraftermods.examplemodloadsavesupportsoft";
-}
-```
-
-This way, BepInEx knows to load your plugin after this plugin.
-
-#### Registering callbacks
-
-This plugin uses callbacks to get what to save or notify about what has been loaded for a plugin.
-
-First, locate this plugin via its guid:
-
-```cs
-using BepInEx.Bootstrap;
-
-if (Chainloader.PluginInfos.TryGetValue(libModLoadSaveSupportGuid, 
-        out BepInEx.PluginInfo pi))
-{
-}
-```
-
-If found, locate the `RegisterLoadSave` method on its instance:
-
-```cs
-// public IDisposable RegisterLoadSave(string guid, Action<string> onLoad, Func<string> onSave)
-
-MethodInfo mi = pi.Instance.GetType().GetMethod("RegisterLoadSave",
-                   new Type[] { 
-                       typeof(string), 
-                       typeof(Action<string>), 
-                       typeof(Func<string>) 
-                   }
-);
-
-```
-
-Then, invoke it with your plugin id and the delegates to a load and a save function:
-
-```cs
-this.handle = (IDisposable)mi.Invoke(pi.Instance, new object[] { 
-    guid, new Action<string>(OnLoad), new Func<string>(OnSave) 
-});
-
-//...
-
-IDisposable handle;
-
-void OnLoad(string content) {
-
-}
-string OnSave() {
-
-}
-```
-
-The handle is there to remove the registration if needed.
-
-```cs
-void OnDestroy()
-{
-    handle?.Dispose();
-    handle = null;
-}
-```
-
-:warning: Please make sure the string you return does not contain the `@` or `|` characters as these are treated by the vanilla game
-and this mod as separators.
-
-#### Loading Lifecycle
-
-This plugin will deliver the custom save data (if any) after the `SessionController.Start` of the game
-returns control. This way, every vanilla game data should be initialized.
-
-Note that there is no guaranteed order of loading data for different registered plugins.
 
 ## (Lathrey) Disable Build Constraints
 
 Updated version of Lathrey's Disable Build Constraint mod. Lathrey no longer supports his mods.
 
-Toggle the mode via Ctrl+G (configurable).
+Two constraints can be disabled:
+
+- Collisions: you can build into the ground, rocks, other structures. Shortcut to toggle: <kbd>Ctrl+G</kbd> (configurable).
+- Snapping: you can build close to other structures without them joining. Shortcut to toggle: <kbd>Ctrl+J</kbd> (configurable).
+
+:information_source: The bottom right corner (where the current coordinates are) will list which constraints are currently disabled.
 
 :warning: This mod runs in a different namespace thus it can't pick up your old configuration.
 
@@ -1583,8 +1610,6 @@ Toggle the mode via Ctrl+G (configurable).
 <details><summary>akarnokd.theplanetcraftermods.lathreydisablebuildconstraints.cfg</summary>
 
 ```
-[General]
-
 ## Pick the modifier key to use in combination with the key to toggle building constraints off/on.
 # Setting type: Key
 # Default value: LeftCtrl
@@ -1596,6 +1621,13 @@ Toggle_Build_Constraints_Modifier_Key = LeftCtrl
 # Default value: G
 # Acceptable values: None, Space, Enter, Tab, Backquote, Quote, Semicolon, Comma, Period, Slash, Backslash, LeftBracket, RightBracket, Minus, Equals, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0, LeftShift, RightShift, LeftAlt, RightAlt, AltGr, LeftCtrl, RightCtrl, LeftMeta, LeftWindows, LeftCommand, LeftApple, RightCommand, RightMeta, RightWindows, RightApple, ContextMenu, Escape, LeftArrow, RightArrow, UpArrow, DownArrow, Backspace, PageDown, PageUp, Home, End, Insert, Delete, CapsLock, NumLock, PrintScreen, ScrollLock, Pause, NumpadEnter, NumpadDivide, NumpadMultiply, NumpadPlus, NumpadMinus, NumpadPeriod, NumpadEquals, Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, OEM1, OEM2, OEM3, OEM4, OEM5, IMESelected
 Toggle_Build_Constraints_Key = G
+
+## Pick the key to use in combination with the modifier key to toggle building snapping off/on.
+# Setting type: Key
+# Default value: J
+# Acceptable values: None, Space, Enter, Tab, Backquote, Quote, Semicolon, Comma, Period, Slash, Backslash, LeftBracket, RightBracket, Minus, Equals, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0, LeftShift, RightShift, LeftAlt, RightAlt, AltGr, LeftCtrl, RightCtrl, LeftMeta, LeftWindows, LeftCommand, LeftApple, RightCommand, RightMeta, RightWindows, RightApple, ContextMenu, Escape, LeftArrow, RightArrow, UpArrow, DownArrow, Backspace, PageDown, PageUp, Home, End, Insert, Delete, CapsLock, NumLock, PrintScreen, ScrollLock, Pause, NumpadEnter, NumpadDivide, NumpadMultiply, NumpadPlus, NumpadMinus, NumpadPeriod, NumpadEquals, Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, OEM1, OEM2, OEM3, OEM4, OEM5, IMESelected
+Toggle_Build_Snap_Key = J
+
 ```
 </details>
 
@@ -1628,6 +1660,37 @@ Toggle_Auto_Move_Key = CapsLock
 ```
 </details>
 
+## (Lathrey) Improve Performance
+
+Disable lights and particle effects on a configurable set of buildings.
+
+:warning: This mod runs in a different namespace thus it can't pick up your old configuration.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.lathreyimproveperformance.cfg</summary>
+
+```
+[General]
+
+## List of comma separated building group ids to disable lights of.
+# Setting type: String
+# Default value: VegetableGrower1,VegetableGrower2,Heater1,Heater2,Heater3,Heater4,EnergyGenerator4,EnergyGenerator5,EnergyGenerator6,CraftStation1,CraftStation2
+DisableLights = VegetableGrower1,VegetableGrower2,Heater1,Heater2,Heater3,Heater4,EnergyGenerator4,EnergyGenerator5,EnergyGenerator6,CraftStation1,CraftStation2
+
+## List of comma separated building group ids to disable particle effects of.
+# Setting type: String
+# Default value: AlgaeSpreader1,AlgaeSpreader2,Heater1,Heater2,Heater3,Heater4,EnergyGenerator4,EnergyGenerator5,EnergyGenerator6,CraftStation1,CraftStation2,Vegetube1,VegeTube2,VegetubeOutside1,Drill0,Drill1,Drill2,Drill3,Beacon1,GasExtractor,Biodome1,Wall_Door
+DisableParticles = AlgaeSpreader1,AlgaeSpreader2,Heater1,Heater2,Heater3,Heater4,EnergyGenerator4,EnergyGenerator5,EnergyGenerator6,CraftStation1,CraftStation2,Vegetube1,VegeTube2,VegetubeOutside1,Drill0,Drill1,Drill2,Drill3,Beacon1,GasExtractor,Biodome1,Wall_Door
+
+## Is this mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+```
+</details>
+
+
 ## (UI) Logistic Select All
 
 Select all groups in the logistic screen by pressing <kbd>Ctrl+A</kbd>.
@@ -1651,3 +1714,149 @@ Show the time unit the next terraformation stage given the current speed of terr
 ### Configuration
 
 None.
+
+## (Cheat) Recyclers Deposit Into Remote Containers
+
+Recyclers deposit the decomposed ingredients into named containers. Supports automatic periodic recycling.
+
+By default, all such ingredients would go into a container named `*Recycled` (case insensitive, can be configured). You can define a list of *item ids* (case sensitive) and *aliases* (case insensitive) to deposit various ingredients into such various named containers. Note that there are some vanilla misspellings (such as `Uranim` to look out for). 
+
+Using the `*` prefix is not required with customized names, but it is recommended to avoid ambiguities with visible and mod-hidden containers.
+
+You can define the automatic recycle period via configuration; default is every 5 seconds. Set it to zero to disable automatic recycling.
+
+You can also define the maximum range (spherical) to look for the named containers.
+
+:information_source: Note that some items can't be recycled because they have no ingredients associated with them or are explicitly forbidden to be recycled by the game.
+
+:warning: if no aliases and no container named `*Recycled` can be found, the recyclers won't work, not even when pressing the button.
+
+
+Example aliases:
+
+```
+DefaultDepositAliases = *Dump
+CustomDepositAliases = Iron:*Common,Magnesium:*Common,Cobalt:*Common;Aluminium:*Precious;Iridium:*Precious
+```
+
+### Standard item identifiers
+
+<details><summary>List of identifiers (case sensitive)</summary>
+
+ - AirFilter1, Algae1Growable, Algae1Seed, Alloy, Aluminium
+ - astrofood, astrofood2, Backpack1, Backpack2, Backpack3
+ - Backpack4, Backpack5, Bacteria1, Bee1Hatched, Bee1Larvae
+ - Bioplastic1, BlueprintT1, BootsSpeed1, BootsSpeed2, BootsSpeed3
+ - Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae, Butterfly12Hatched
+ - Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched, Butterfly14Larvae
+ - Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae, Butterfly17Hatched
+ - Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly1Hatched, Butterfly1Larvae
+ - Butterfly2Hatched, Butterfly2Larvae, Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched
+ - Butterfly4Larvae, Butterfly5Hatched, Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae
+ - Butterfly7Hatched, Butterfly7Larvae, Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched
+ - Butterfly9Larvae, CircuitBoard1, Cobalt, CookCake1, CookChocolate
+ - CookCocoaGrowable, CookCocoaSeed, CookCookie1, CookCroissant, CookFlour
+ - CookWheatGrowable, CookWheatSeed, Drone1, EquipmentIncrease1, EquipmentIncrease2
+ - EquipmentIncrease3, FabricBlue, Fertilizer1, Fertilizer2, Firefly1Hatched
+ - Fish10Eggs, Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish1Eggs
+ - Fish1Hatched, Fish2Eggs, Fish2Hatched, Fish3Eggs, Fish3Hatched
+ - Fish4Eggs, Fish4Hatched, Fish5Eggs, Fish5Hatched, Fish6Eggs
+ - Fish6Hatched, Fish7Eggs, Fish7Hatched, Fish8Eggs, Fish8Hatched
+ - Fish9Eggs, Fish9Hatched, FusionEnergyCell, honey, HudChipCleanConstruction
+ - HudCompass, ice, Iridium, Iron, Jetpack1
+ - Jetpack2, Jetpack3, LarvaeBase1, LarvaeBase2, LarvaeBase3
+ - Magnesium, MethanCapsule1, MultiBuild, MultiDeconstruct, MultiToolDeconstruct2
+ - MultiToolLight, MultiToolLight2, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
+ - MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, NitrogenCapsule1
+ - Osmium, OxygenCapsule1, OxygenTank1, OxygenTank2, OxygenTank3
+ - OxygenTank4, Phytoplankton1, Phytoplankton2, Phytoplankton3, Phytoplankton4
+ - PulsarQuartz, RedPowder1, RocketBiomass1, RocketDrones1, RocketHeat1
+ - RocketInformations1, RocketInsects1, RocketMap1, RocketMap2, RocketMap3
+ - RocketMap4, RocketOxygen1, RocketPressure1, RocketReactor, Rod-alloy
+ - Rod-iridium, Rod-osmium, Rod-uranium, Seed0, Seed0Growable
+ - Seed1, Seed1Growable, Seed2, Seed2Growable, Seed3
+ - Seed3Growable, Seed4, Seed4Growable, Seed5, Seed5Growable
+ - Seed6, Seed6Growable, SeedGold, SeedGoldGrowable, Silicon
+ - Silk, SilkWorm, Sulfur, Titanium, Tree0Growable
+ - Tree0Seed, Tree1Growable, Tree1Seed, Tree2Growable, Tree2Seed
+ - Tree3Growable, Tree3Seed, Tree4Growable, Tree4Seed, Tree5Growable
+ - Tree5Seed, Tree6Growable, Tree6Seed, Tree7Growable, Tree7Seed
+ - Tree8Growable, Tree8Seed, Tree9Growable, Tree9Seed, TreeRoot
+ - Uranim, Vegetable0Growable, Vegetable0Seed, Vegetable1Growable, Vegetable1Seed
+ - Vegetable2Growable, Vegetable2Seed, Vegetable3Growable, Vegetable3Seed, WardenKey
+ - WaterBottle1, WaterFilter, Zeolite
+
+</details>
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatrecyclerremotedeposit.cfg</summary>
+
+```
+[General]
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable debug mode with detailed logging (chatty!)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+## The name of the container to deposit resources not explicity mentioned in CustomDepositAliases.
+# Setting type: String
+# Default value: *Recycled
+DefaultDepositAlias = *Recycled
+
+## Comma separated list of resource_id:alias to deposit into such named containers
+# Setting type: String
+# Default value: 
+CustomDepositAliases = 
+
+## How often to auto-recycle, seconds. Zero means no auto-recycle.
+# Setting type: Int32
+# Default value: 5
+AutoRecyclePeriod = 5
+
+## The maximum range to look for containers within. Zero means unlimited range.
+# Setting type: Int32
+# Default value: 20
+MaxRange = 20
+```
+</details>
+
+## (Cheat) More Trade
+
+Add new items to the Trade Rocket system or modify the trade value of existing items.
+
+In the config file, specify the comma separated list of item identifiers and their trade value.
+
+```
+Custom = Vegetable3Seed=2000,BlueprintT1=3000
+```
+
+:information_source: Note that some items may still not show up due to unlock restrictions.
+
+<details><summary>List of item identifiers</summary>
+AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2, Alloy, Aluminium, AmphibiansFarm1, Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1, Backpack1, Backpack2, Backpack3, Backpack4, Backpack5, Bacteria1, Beacon, BedDouble, BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1, Beehive2, biodome, Biodome2, Biolab, Bioplastic1, BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintPod9xA, BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintT1, BootsSpeed1, BootsSpeed2, BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae, Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched, Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae, Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched, Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae, Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched, Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae, Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1, ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1, CircuitBoard1, Cobalt, ComAntenna, Container1, Container2, Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed, CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1, CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2, DebrisContainer1, Desktop1, Destructor1, DisplayCase, door, Drill0, Drill1, Drill2, Drill3, Drill4, Drone1, Drone2, DroneStation1, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4, EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3, EscapePod, FabricBlue, Farm1, Fence, Fertilizer1, Fertilizer2, Firefly1Hatched, Fish10Eggs, Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs, Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched, Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs, Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched, FishDisplayer1, FishFarm1, FloorGlass, FlowerPot1, Foundation, Frog10Eggs, Frog10Hatched, Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs, Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched, Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs, Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs, FrogGoldHatched, FusionEnergyCell, FusionGenerator1, GasExtractor1, GasExtractor2, GeneticManipulator1, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3, GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GrassSpreader1, Heater1, Heater2, Heater3, Heater4, Heater5, honey, HudChipCleanConstruction, HudCompass, ice, Incubator1, InsideLamp1, Iridium, Iron, Jetpack1, Jetpack2, Jetpack3, Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform, Magnesium, MethanCapsule1, MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolLight, MultiToolLight2, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3, MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4, NitrogenCapsule1, OreExtractor1, OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1, OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1, Phytoplankton2, Phytoplankton3, Phytoplankton4, pod, Pod4x, Pod9xA, Pod9xB, Pod9xC, podAngle, PulsarQuartz, RecyclingMachine, RedPowder1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1, RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4, RocketOxygen1, RocketPressure1, RocketReactor, Rod-alloy, Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy, ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage, ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable, Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4, Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable, SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign, Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric, Sofa, SofaAngle, SofaColored, SpaceMultiplierAnimals, SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants, SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1, TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium, TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed, Tree1Growable, Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed, Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable, Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed, Tree9Growable, Tree9Seed, TreeRoot, TreeSpreader0, TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed, Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable, Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2, VegetubeOutside1, wallplain, WardenAustel, WardenKey, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter, WaterLifeCollector1, window, wreckpilar, WreckServer, Zeolite, 
+</details>
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatmoretrade.cfg</summary>
+
+```
+
+[General]
+
+## Comma separated list of id=value to modify to add to the tradeable list.
+# Setting type: String
+# Default value: Vegetable0Seed=500,Vegetable1Seed=1000,Vegetable2Seed=1500,Vegetable3Seed=2000,BlueprintT1=3000
+Custom = Vegetable0Seed=500,Vegetable1Seed=1000,Vegetable2Seed=1500,Vegetable3Seed=2000,BlueprintT1=3000
+```
+</details>
+

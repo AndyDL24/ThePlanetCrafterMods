@@ -16,6 +16,11 @@ namespace FeatMultiplayer
     {
         static GameObject playerLocatorOverlay;
 
+        static GameObject playerListOverlay;
+        static Transform healthGaugeTransform;
+        static Transform waterGaugeTransform;
+        static List<GameObject> playerListGameObjects = new();
+
         void OverlaySetup()
         {
             EnsureKeyboard(playerLocatorKey);
@@ -26,6 +31,8 @@ namespace FeatMultiplayer
         void HandleOverlays()
         {
             HandlePlayerLocator();
+
+            HandlePlayerList();
         }
 
         void HandlePlayerLocator()
@@ -112,22 +119,27 @@ namespace FeatMultiplayer
         {
             var text = otherPlayer.GetComponent<Text>();
 
-            if (conn != null)
+            if (conn != null && conn.clientName != null && playerAvatars.TryGetValue(conn.clientName, out var avatar))
             {
-                var pos = playerAvatars[conn.clientName].rawPosition;
+                var pos = avatar.rawPosition;
 
                 text.text = "<b>" + (isHost ? "<Host>" : conn.clientName) + "\n(" + ((int)Vector3.Distance(pos, localPlayerPos)) + " m)</b>";
 
                 var xy = Camera.main.WorldToScreenPoint(pos) - new Vector3(Screen.width / 2, Screen.height / 2, 0);
+                var heading = pos - Camera.main.transform.position;
+                var behind = Vector3.Dot(Camera.main.transform.forward, heading) < 0;
 
                 var rect = text.GetComponent<RectTransform>();
 
-                rect.localPosition = xy; // + new Vector3(text.preferredWidth / 2, - text.preferredHeight / 2);
-
-                var x = rect.localPosition.x;
-                var y = rect.localPosition.y;
+                var x = xy.x;
+                var y = xy.y;
                 var w = text.preferredWidth;
                 var h = text.preferredHeight;
+
+                if (behind)
+                {
+                    x = -x;
+                }
 
                 var minX = -Screen.width / 2 + w / 2;
                 var maxX = Screen.width / 2 - w / 2;
@@ -136,6 +148,20 @@ namespace FeatMultiplayer
 
                 x = Mathf.Clamp(x, minX, maxX);
                 y = Mathf.Clamp(y, minY, maxY);
+               
+
+                if (behind)
+                {
+                    if (Mathf.Abs(y - minY) > Mathf.Abs(maxY - y))
+                    {
+                        y = minY;
+                    }
+                    else
+                    {
+                        y = maxY;
+                    }
+                }
+
                 rect.localPosition = new Vector2(x, y);
             }
             else
@@ -143,5 +169,108 @@ namespace FeatMultiplayer
                 text.text = "";
             }
         }
+
+        void HandlePlayerList()
+        {
+            if (healthGaugeTransform == null)
+            {
+                var gau = FindAnyObjectByType<PlayerGaugeHealth>();
+                if (gau == null)
+                {
+                    return;
+                }
+                healthGaugeTransform = gau.transform;
+
+                waterGaugeTransform = FindAnyObjectByType<PlayerGaugeThirst>().transform;
+            }
+
+            if (playerListOverlay == null)
+            {
+                playerListOverlay = new GameObject("FeatMultiplayer_PlayerListOverlay");
+                var canvas = playerListOverlay.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 95;
+            }
+
+            while (playerListGameObjects.Count < playerAvatars.Count + 1)
+            {
+                var go = new GameObject("FeatMultiplayer_PlayerList_" + playerListGameObjects.Count);
+                go.transform.SetParent(playerListOverlay.transform, false);
+
+                var text = go.AddComponent<Text>();
+                text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                text.text = "";
+                text.color = Color.white;
+                text.fontSize = fontSize.Value;
+                text.resizeTextForBestFit = false;
+                text.verticalOverflow = VerticalWrapMode.Overflow;
+                text.horizontalOverflow = HorizontalWrapMode.Overflow;
+                text.alignment = TextAnchor.MiddleCenter;
+
+                var outline = go.AddComponent<Outline>();
+                outline.effectColor = Color.black;
+                outline.effectDistance = new Vector2(1, -1);
+
+                playerListGameObjects.Add(go);
+            }
+
+            var gd = Mathf.Abs(healthGaugeTransform.position.y - waterGaugeTransform.position.y);
+
+            var ddy = fontSize.Value + 5;
+            var dx = -Screen.width / 2 + healthGaugeTransform.position.x;
+            var dy = -Screen.height / 2 + healthGaugeTransform.position.y + gd + ddy / 2;
+
+            int i = 0;
+
+            var namesList = new List<string>(playerAvatars.Values.Select(p => p.name));
+
+            if (updateMode == MultiplayerMode.CoopHost)
+            {
+                var hn = hostDisplayName.Value;
+                if (string.IsNullOrEmpty(hn))
+                {
+                    namesList.Insert(0, "< Host >");
+                }
+                else
+                {
+                    namesList.Insert(0, hn);
+                }
+            }
+            else
+            {
+                namesList.Insert(0, clientJoinName);
+            }
+
+            foreach (var player in namesList)
+            {
+                var go = playerListGameObjects[i];
+
+                go.SetActive(true);
+
+                var txt = go.GetComponent<Text>();
+                txt.text = player;
+
+                if (i == 0)
+                {
+                    txt.color = Color.yellow;
+                    txt.fontStyle = FontStyle.Bold;
+                }
+
+                var rect = go.GetComponent<RectTransform>();
+                rect.localPosition = new Vector3(dx + txt.preferredWidth / 2, dy, 0);
+                
+
+                dy += ddy;
+
+                i++;
+            }
+
+            while (i < playerListGameObjects.Count)
+            {
+                playerListGameObjects[i].SetActive(false);
+                i++;
+            }
+        }
+        
     }
 }

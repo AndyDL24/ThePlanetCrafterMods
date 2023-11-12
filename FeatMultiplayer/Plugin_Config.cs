@@ -9,6 +9,7 @@ using System.IO;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace FeatMultiplayer
 {
@@ -19,6 +20,7 @@ namespace FeatMultiplayer
         static ConfigEntry<int> fullSyncDelay;
         static ConfigEntry<int> smallSyncDelay;
         static ConfigEntry<bool> streamerMode;
+        static ConfigEntry<int> networkTelemetry;
 
         static ConfigEntry<bool> hostMode;
         static ConfigEntry<bool> useUPnP;
@@ -42,6 +44,9 @@ namespace FeatMultiplayer
         static ConfigEntry<bool> slowdownConsumption;
         internal static ConfigEntry<int> playerNameFontSize;
         static ConfigEntry<string> emoteKey;
+
+        internal static ConfigEntry<bool> enableJetpackSound;
+
         static InputAction emoteAction;
 
         static ConfigEntry<string> playerLocatorKey;
@@ -75,6 +80,7 @@ namespace FeatMultiplayer
             playerNameFontSize = Config.Bind("General", "PlayerNameFontSize", 20, "Font size used to display the player's names above their avatar.");
             emoteKey = Config.Bind("General", "EmoteKey", "G", "The key to bring up the emote wheel.");
             playerLocatorKey = Config.Bind("General", "PlayerLocatorKey", "H", "Toggle the overlay that shows the other players' location");
+            networkTelemetry = Config.Bind("General", "NetworkTelemetry", 0, "Time in seconds to take a network telemetry snapshot. 0 means disabled.");
 
             hostMode = Config.Bind("Host", "Host", false, "If true, loading a save will also host it as a multiplayer game.");
             useUPnP = Config.Bind("Host", "UseUPnP", false, "If behind NAT, use UPnP to manually map the HostPort to the external IP address?");
@@ -93,6 +99,7 @@ namespace FeatMultiplayer
             clientLogLevel = Config.Bind("Client", "LogLevel", 2, "0 - debug+, 1 - info+, 2 - warning+, 3 - error");
 
             streamerMode = Config.Bind("General", "StreamerMode", false, "Hides the IP addresses in the main menu.");
+            enableJetpackSound = Config.Bind("General", "JetpackSound", true, "Enables the jetpack sounds of the other players.");
 
             Assembly me = Assembly.GetExecutingAssembly();
             resourcesPath = Path.GetDirectoryName(me.Location);
@@ -113,7 +120,16 @@ namespace FeatMultiplayer
 
             OverlaySetup();
 
-            Harmony.CreateAndPatchAll(typeof(Plugin));
+            NetworkTelemetrySetup(this);
+
+            var harmony = Harmony.CreateAndPatchAll(typeof(Plugin));
+            LibCommon.SaveModInfo.Patch(harmony);
+            LibCommon.GameVersionCheck.Patch(harmony, "(Feat) Multiplayer - v" + PluginInfo.PLUGIN_VERSION);
+        }
+
+        void OnDestroy()
+        {
+            theLogger.LogInfo("OnDestroy");
         }
 
         static Texture2D LoadPNG(string filename)
@@ -145,6 +161,10 @@ namespace FeatMultiplayer
         /// PlayerEquipment.hasCompassChip
         /// </summary>
         static FieldInfo playerEquipmentHasCompassChip;
+        /// <summary>
+        /// PlayerEquipment.hasMapChip
+        /// </summary>
+        static FieldInfo playerEquipmentHasMapChip;
 
         static FieldInfo meteoHandlerMeteoEvents;
 
@@ -156,6 +176,14 @@ namespace FeatMultiplayer
         static AccessTools.FieldRef<Inventory, InventoryDisplayer> inventoryDisplayer;
         static MethodInfo logisticSelectorSetListsDisplay;
         static AccessTools.FieldRef<PlayerLarvaeAround, int> playerLarvaeAroundNoLarvaeZoneEntered;
+
+        static MethodInfo uiWindowLogisticsSetLogisticsList;
+
+        static MethodInfo machineTradePlatformUpdateGrowth;
+        static MethodInfo uiWindowTradeUpdateTokenUi;
+
+        static AccessTools.FieldRef<UiGroupLine, Group> uiGroupLineGroup;
+        static AccessTools.FieldRef<UiWindowTrade, MachineTradePlatform> uiWindowTradeMachineTradePlatform;
 
         static void InitReflectiveAccessors()
         {
@@ -189,6 +217,7 @@ namespace FeatMultiplayer
 
             playerEquipmentHasCleanConstructionChip = AccessTools.Field(typeof(PlayerEquipment), "hasCleanConstructionChip");
             playerEquipmentHasCompassChip = AccessTools.Field(typeof(PlayerEquipment), "hasCompassChip");
+            playerEquipmentHasMapChip = AccessTools.Field(typeof(PlayerEquipment), "hasMapChip");
 
             worldUnitsPositioningHandlerAllWorldUnitPositionings = AccessTools.Field(typeof(WorldUnitPositioningHandler), "allWorldUnitPositionings");
 
@@ -204,6 +233,16 @@ namespace FeatMultiplayer
             logisticSelectorSetListsDisplay = AccessTools.Method(typeof(LogisticSelector), "SetListsDisplay");
 
             playerLarvaeAroundNoLarvaeZoneEntered = AccessTools.FieldRefAccess<PlayerLarvaeAround, int>("noLarvaeZoneEntered");
+
+            uiWindowLogisticsSetLogisticsList = AccessTools.Method(typeof(UiWindowLogistics), "SetLogisticsList", new Type[] { typeof(bool), typeof(GridLayoutGroup), typeof(List<Inventory>) });
+
+            machineTradePlatformUpdateGrowth = AccessTools.Method(typeof(MachineTradePlatform), "UpdateGrowth", new Type[] { typeof(float) });
+
+            uiWindowTradeUpdateTokenUi = AccessTools.Method(typeof(UiWindowTrade), "UpdateTokenUi");
+
+            uiGroupLineGroup = AccessTools.FieldRefAccess<UiGroupLine, Group>("group");
+
+            uiWindowTradeMachineTradePlatform = AccessTools.FieldRefAccess<UiWindowTrade, MachineTradePlatform>("machineTradePlatform");
         }
 
     }

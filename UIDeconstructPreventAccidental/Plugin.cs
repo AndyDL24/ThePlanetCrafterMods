@@ -5,7 +5,7 @@ using HarmonyLib;
 
 namespace UIDeconstructPreventAccidental
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.uideconstructpreventaccidental", "(UI) Prevent Accidental Deconstruct", "1.0.0.2")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.uideconstructpreventaccidental", "(UI) Prevent Accidental Deconstruct", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
         static ConfigEntry<bool> modEnabled;
@@ -22,10 +22,26 @@ namespace UIDeconstructPreventAccidental
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(ActionDeconstructible), nameof(ActionDeconstructible.OnAction))]
-        static bool ActionDeconstructible_Deconstruct(BaseHudHandler ___hudHandler)
+        static bool ActionDeconstructible_OnAction(BaseHudHandler ___hudHandler)
         {
             var ap = Managers.GetManager<PlayersManager>().GetActivePlayerController();
             if (modEnabled.Value 
+                && ap.GetMultitool().GetState() == DataConfig.MultiToolState.Deconstruct
+                && !ap.GetPlayerInputDispatcher().IsPressingAccessibilityKey()
+            )
+            {
+                ___hudHandler.DisplayCursorText("", 3, "Hold the <Accessibility Key> to safely deconstruct.");
+                return false;
+            }
+            return true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ActionPanelDeconstruct), nameof(ActionDeconstructible.OnAction))]
+        static bool ActionPanelDeconstruct_OnAction(BaseHudHandler ___hudHandler)
+        {
+            var ap = Managers.GetManager<PlayersManager>().GetActivePlayerController();
+            if (modEnabled.Value
                 && ap.GetMultitool().GetState() == DataConfig.MultiToolState.Deconstruct
                 && !ap.GetPlayerInputDispatcher().IsPressingAccessibilityKey()
             )

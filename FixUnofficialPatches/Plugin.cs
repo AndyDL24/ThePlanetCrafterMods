@@ -10,6 +10,10 @@ using System.Reflection;
 using System.IO;
 using System;
 using System.Linq;
+using TMPro;
+using System.Globalization;
+using System.Collections;
+using BepInEx.Configuration;
 
 namespace FixUnofficialPatches
 {
@@ -19,12 +23,20 @@ namespace FixUnofficialPatches
 
         static ManualLogSource logger;
 
+        static MethodInfo PlayerDirectVolumeOnTriggerExit;
+
+        static ConfigEntry<bool> enableTeleportFix;
+
         private void Awake()
         {
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
             logger = Logger;
+
+            enableTeleportFix = Config.Bind("General", "TeleportFix", true, "Enable the workaround for teleporting around and breaking larvae spawns");
+
+            PlayerDirectVolumeOnTriggerExit = AccessTools.Method(typeof(PlayerDirectEnvironment), "OnTriggerExit", new Type[] { typeof(Collider) });
 
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
@@ -124,6 +136,13 @@ namespace FixUnofficialPatches
         }
 
         [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineGrower), "OnInventoryModified")]
+        static bool MachineGrower_OnInventoryModified(MachineGrower __instance)
+        {
+            return __instance != null;
+        }
+
+        [HarmonyPrefix]
         [HarmonyPatch(typeof(MachineConvertRecipe), nameof(MachineConvertRecipe.CheckIfFullyGrown))]
         static bool MachineConvertRecipe_CheckIfFullyGrown(
             WorldObject ___worldObject
@@ -194,6 +213,7 @@ namespace FixUnofficialPatches
             return __instance.HasDemandGroups();
         }
 
+        /* Fixed in 0.8.009
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Drone), nameof(Drone.UpdateState))]
         static void Drone_UpdateState(LogisticTask ___logisticTask)
@@ -209,7 +229,8 @@ namespace FixUnofficialPatches
                         ___logisticTask.SetTaskState(LogisticData.TaskState.Done);
                     }
                 }
-                if (state == LogisticData.TaskState.ToSupply)
+                if (!___logisticTask.GetIsSpawnedObject() 
+                    && state == LogisticData.TaskState.ToSupply)
                 {
                     var go = ___logisticTask.GetSupplyInventoryWorldObject()?.GetGameObject();
                     if (go == null)
@@ -219,19 +240,284 @@ namespace FixUnofficialPatches
                 }
             }
         }
+        */
 
         [HarmonyPostfix]
-        [HarmonyPatch(typeof(PlayerLarvaeAround), "CleanFarAwayLarvae")]
-        static void PlayerLarvaeAround_CleanFarAwayLarvae(List<GameObject> ___larvaesSpawned)
+        [HarmonyPatch(typeof(ScreenTerraStage), "RefreshDisplay", new Type[0])]
+        static void ScreenTerraStage_RefreshDisplay(
+            ScreenTerraStage __instance, TerraformStagesHandler ___terraformStagesHandler, ref TerraformStage ___previousCurrentStage)
         {
-            for (int i = ___larvaesSpawned.Count - 1; i >= 0; i--)
+            TerraformStage currentGlobalStage = ___terraformStagesHandler.GetCurrentGlobalStage();
+            TerraformStage nextGlobalStage = ___terraformStagesHandler.GetNextGlobalStage();
+
+            if (currentGlobalStage != null && nextGlobalStage != null)
             {
-                if (___larvaesSpawned[i] == null)
+                if (currentGlobalStage != nextGlobalStage)
                 {
-                    ___larvaesSpawned.RemoveAt(i);
+                    __instance.percentageProcess.text = ___terraformStagesHandler.GetNextGlobalStageCompletion().ToString("F2") + "%";
                 }
+                else
+                {
+                    __instance.percentageProcess.text = "N/A";
+                }
+            }
+            else
+            {
+                __instance.percentageProcess.text = "N/A";
+            }
+
+            if (currentGlobalStage != null)
+            {
+                __instance.currentStageImage.sprite = currentGlobalStage.GetStageImage();
+                __instance.currentStageName.text = Readable.GetTerraformStageName(currentGlobalStage);
+            }
+            else
+            {
+                __instance.currentStageImage.sprite = null;
+                __instance.currentStageName.text = "N/A";
+            }
+            if (nextGlobalStage != null && nextGlobalStage != currentGlobalStage)
+            {
+                __instance.nextStageImage.sprite = nextGlobalStage.GetStageImage();
+                __instance.nextStageName.text = Readable.GetTerraformStageName(nextGlobalStage);
+            }
+            else
+            {
+                __instance.nextStageImage.sprite = null;
+                __instance.nextStageName.text = "N/A";
             }
         }
 
+        /*
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(LogisticStationDistanceToTask), nameof(LogisticStationDistanceToTask.CompareTo))]
+        static bool LogisticStationDistanceToTask_CompareTo(object obj, float ___distanceToSupply, ref int __result)
+        {
+            var dist = (obj as LogisticStationDistanceToTask).GetDistance();
+            if (dist < ___distanceToSupply)
+            {
+                __result = 1;
+            }
+            else if (dist > ___distanceToSupply)
+            {
+                __result = -1;
+            }
+            else
+            {
+                __result = 0;
+            }
+            return false;
+        }
+        */
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDroneStation), "OnDestroy")]
+        static bool MachineDroneStation_OnDestroy()
+        {
+            return Managers.GetManager<LogisticManager>() != null;
+        }
+
+        static readonly Color colorTransparent = new(0, 0, 0, 0);
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(DataTreatments), nameof(DataTreatments.ColorToString))]
+        static bool DataTreatments_ColorToString(ref string __result, in Color _color, char ___colorDelimiter)
+        {
+            if (_color == colorTransparent)
+            {
+                __result = "";
+            }
+            else
+            {
+                __result = _color.r.ToString(CultureInfo.InvariantCulture)
+                        + ___colorDelimiter
+                        + _color.g.ToString(CultureInfo.InvariantCulture)
+                        + ___colorDelimiter
+                        + _color.b.ToString(CultureInfo.InvariantCulture)
+                        + ___colorDelimiter
+                        + _color.a.ToString(CultureInfo.InvariantCulture)
+                    ;
+            }
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(DataTreatments), nameof(DataTreatments.ParseStringColor))]
+        static void DataTreatments_ParseStringColor(ref string _float)
+        {
+            _float = _float.Replace('/', '.');
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineGrower), "InstantiatedGameObjectFromInventory")]
+        static bool InstantiatedGameObjectFromInventory(GameObject ___spawnPoint)
+        {
+            return ___spawnPoint != null;
+        }
+
+        /* Fixed in 0.8.009
+        static List<Collider> exitedColliders;
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerMainController), "SetPlayerPlacement")]
+        static bool PlayerMainController_SetPlayerPlacement(PlayerMainController __instance,
+            Vector3 _position, Quaternion _rotation)
+        {
+            if (enableTeleportFix.Value)
+            {
+                var beforeColliders = Physics.OverlapSphere(__instance.transform.position, 0.1f);
+                exitedColliders = new();
+
+                __instance.transform.position = _position;
+                __instance.transform.rotation = _rotation;
+                Physics.SyncTransforms();
+                PlayerFallDamage component = __instance.GetComponent<PlayerFallDamage>();
+                if (component != null)
+                {
+                    component.ResetLastGroundPlace();
+                }
+
+                Managers.GetManager<DisablerManager>().ForceCheckAllDisablers();
+
+                __instance.StartCoroutine(SetPlayerPlacementAfter(1, beforeColliders, __instance));
+
+                return false;
+            }
+            return true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerDirectEnvironment), "OnTriggerExit")]
+        static void PlayerDirectEnvironment_OnTriggerExit(Collider other)
+        {
+            exitedColliders?.Add(other);
+        }
+
+        static IEnumerator SetPlayerPlacementAfter(
+            int frames,
+            Collider[] beforeColliders,
+            PlayerMainController __instance)
+        {
+            for (int i = 0; i < frames; i++)
+            {
+                yield return null;
+            }
+
+            var pde = __instance?.GetComponent<PlayerDirectEnvironment>();
+            if (pde != null)
+            {
+                var afterColliders = Physics.OverlapSphere(__instance.transform.position, 0.1f);
+
+                foreach (var bc in beforeColliders)
+                {
+                    bool inAfterColliders = Array.IndexOf(afterColliders, bc) != -1;
+                    bool hasExitedNormally = exitedColliders == null || exitedColliders.IndexOf(bc) != -1;
+                    if (!inAfterColliders && !hasExitedNormally)
+                    {
+                        logger.LogInfo("OnTriggerExit: Manually triggered on " + bc.name);
+                        PlayerDirectVolumeOnTriggerExit.Invoke(pde, new object[] { bc });
+                    }
+                }
+            }
+        }
+        */
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineAutoCrafter), "SetItemsInRange")]
+        static bool MachineAutoCrafter_SetItemsInRange(
+            MachineAutoCrafter __instance,
+            List<WorldObject> ___worldObjectsInRange,
+            List<Group> ___groupsInRangeForListing,
+            ref Inventory ___autoCrafterInventory,
+            float ___range
+        )
+        {
+            ___worldObjectsInRange.Clear();
+            ___groupsInRangeForListing.Clear();
+            ___autoCrafterInventory = __instance.GetComponent<InventoryAssociated>().GetInventory();
+            var pos = __instance.transform.position;
+
+            foreach (var wo in WorldObjectsHandler.GetAllWorldObjects())
+            {
+                Vector3 wop = wo.GetPosition();
+                if (wop != Vector3.zero && Vector3.Distance(wop, pos) < ___range)
+                {
+                    var gr = wo.GetGroup();
+                    if (wo.GetLinkedInventoryId() != 0 
+                        && gr.GetId() != "Drone1"
+                        && gr.GetId() != "Drone2")
+                    {
+                        ___groupsInRangeForListing.Add(gr);
+                        var inv = InventoriesHandler.GetInventoryById(wo.GetLinkedInventoryId());
+                        if (inv != null)
+                        {
+                            foreach (var item in inv.GetInsideWorldObjects())
+                            {
+                                if (!item.GetIsLockedInInventory())
+                                {
+                                    ___worldObjectsInRange.Add(item);
+                                }
+                            }
+                        }
+                    }
+                    else if (gr is GroupItem)
+                    {
+                        ___worldObjectsInRange.Add(wo);
+                        ___groupsInRangeForListing.Add(gr);
+                    }
+                }
+            }
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(UiDropDownAndHover), nameof(UiDropDownAndHover.ClearOptions))]
+        static bool UiDropDownAndHover_ClearOptions(TMP_Dropdown ___dropdown)
+        {
+            return ___dropdown != null;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(UiDropDownAndHover), nameof(UiDropDownAndHover.AddOptions))]
+        static bool UiDropDownAndHover_AddOptions(TMP_Dropdown ___dropdown)
+        {
+            return ___dropdown != null;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(UiDropDownAndHover), nameof(UiDropDownAndHover.SelectOption))]
+        static bool UiDropDownAndHover_SelectOption(TMP_Dropdown ___dropdown)
+        {
+            return ___dropdown != null;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(UiDropDownAndHover), nameof(UiDropDownAndHover.GetIndexOfSelectedItem))]
+        static bool UiDropDownAndHover_GetIndexOfSelectedItem(TMP_Dropdown ___dropdown, ref int __result)
+        {
+            if (___dropdown == null)
+            {
+                __result = -1;
+                return false;
+            }
+            return true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineOptimizer), "RemovePreviouslySetWorldObjects")]
+        static void MachineOptimizer_RemovePreviouslySetWorldObjects(
+                    List<WorldObject> ___modifiedWorldObjects,
+                    List<GroupItem>  ___fuseGroupsForWorldObjects
+            )
+        {
+            for (int i = ___modifiedWorldObjects.Count - 1; i >= 0; i--)
+            {
+                if (___modifiedWorldObjects[i].GetGameObject() == null)
+                {
+                    ___modifiedWorldObjects.RemoveAt(i);
+                    ___fuseGroupsForWorldObjects.RemoveAt(i);
+                }
+            }
+        }
     }
 }

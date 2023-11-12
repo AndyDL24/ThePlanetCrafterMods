@@ -16,34 +16,58 @@ using UnityEngine.InputSystem;
 [assembly: InternalsVisibleTo("XTestPlugins")]
 namespace MiscPluginUpdateChecker
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.miscpluginupdatechecker", "(Misc) Plugin Update Checker", "1.0.0.3")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.miscpluginupdatechecker", "(Misc) Plugin Update Checker", PluginInfo.PLUGIN_VERSION)]
     [BepInDependency("akarnokd.theplanetcraftermods.featmultiplayer", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
-        static ManualLogSource logger;
+        static ManualLogSource _logger;
 
         static ConfigEntry<bool> isEnabled;
         static ConfigEntry<string> versionInfoRepository;
         static ConfigEntry<bool> bypassCache;
         static ConfigEntry<int> fontSize;
+        static ConfigEntry<bool> debugMode;
 
         private void Awake()
         {
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
-            logger = Logger;
+            _logger = Logger;
 
             isEnabled = Config.Bind("General", "Enabled", true, "Is the mod enabled?");
             versionInfoRepository = Config.Bind("General", "VersionInfoRepository", Helpers.defaultVersionInfoRepository, "The URL from where to download an XML describing various known plugins and their latest versions.");
             bypassCache = Config.Bind("General", "BypassCache", false, "If true, this mod will try to bypass caching on the targeted URLs by appending an arbitrary query parameter");
             fontSize = Config.Bind("General", "FontSize", 16, "The font size");
+            debugMode = Config.Bind("General", "DebugMode", false, "Enable detailed logging of the mod (chatty!)");
 
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
 
         static CancellationTokenSource cancelDownload;
         static volatile List<PluginVersionDiff> pluginInfos;
+
+        static void LogInfo(object message)
+        {
+            if (debugMode.Value)
+            {
+                _logger.LogInfo(message);
+            }
+        }
+        static void LogWarning(object message)
+        {
+            if (debugMode.Value)
+            {
+                _logger.LogWarning(message);
+            }
+        }
+        static void LogError(object message)
+        {
+            if (debugMode.Value)
+            {
+                _logger.LogError(message);
+            }
+        }
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Intro), "Start")]
@@ -150,7 +174,7 @@ namespace MiscPluginUpdateChecker
             if (diffs.Count != 0)
             {
                 toHide.Clear();
-                foreach (GameObject go in FindObjectsOfType<GameObject>())
+                foreach (GameObject go in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
                 {
                     if (go != aparent && go.GetComponentInChildren<Canvas>() && go.activeSelf)
                     {
@@ -315,12 +339,12 @@ namespace MiscPluginUpdateChecker
             {
                 var remotePluginInfos = Helpers.DownloadPluginInfos(
                     startUrl,
-                    o => logger.LogInfo(o),
-                    o => logger.LogWarning(o),
-                    o => logger.LogError(o),
+                    o => LogInfo(o),
+                    o => LogWarning(o),
+                    o => LogError(o),
                     bypassCache
                 );
-                logger.LogInfo("Comparing local and remote plugins");
+                LogInfo("Comparing local and remote plugins");
 
                 List<PluginVersionDiff> diffs = new();
 
@@ -339,14 +363,14 @@ namespace MiscPluginUpdateChecker
                         }
                     }
                 }
-                logger.LogInfo("Plugin differences found: " + diffs.Count);
+                LogInfo("Plugin differences found: " + diffs.Count);
                 pluginInfos = diffs;
             }
             catch (Exception ex)
             {
                 if (!cancelDownload.IsCancellationRequested)
                 {
-                    logger.LogError(ex);
+                    LogError(ex);
                 }
             }
         }

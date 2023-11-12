@@ -11,7 +11,7 @@ using UnityEngine.UI;
 
 namespace CheatNearbyResourcesHighlight
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.cheatnearbyresourceshighlight", "(Cheat) Highlight Nearby Resources", "1.0.0.9")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.cheatnearbyresourceshighlight", "(Cheat) Highlight Nearby Resources", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
         /// <summary>
@@ -32,6 +32,10 @@ namespace CheatNearbyResourcesHighlight
         private static ConfigEntry<string> resourceSetStr;
 
         private static ConfigEntry<string> larvaeSetStr;
+
+        private static ConfigEntry<string> fishSetStr;
+
+        private static ConfigEntry<string> frogSetStr;
 
         private static ConfigEntry<float> lineIndicatorLength;
 
@@ -73,7 +77,39 @@ namespace CheatNearbyResourcesHighlight
             "Butterfly15Larvae",
             "Butterfly16Larvae",
             "Butterfly17Larvae",
-            "Butterfly18Larvae"
+            "Butterfly18Larvae",
+            "Butterfly19Larvae"
+        });
+
+        static readonly string defaultFishSet = string.Join(",", new string[]
+        {
+            "Fish1Eggs",
+            "Fish2Eggs",
+            "Fish3Eggs",
+            "Fish4Eggs",
+            "Fish5Eggs",
+            "Fish6Eggs",
+            "Fish7Eggs",
+            "Fish8Eggs",
+            "Fish9Eggs",
+            "Fish10Eggs",
+            "Fish11Eggs",
+            "Fish12Eggs"
+        });
+
+        static readonly string defaultFrogSet = string.Join(",", new string[]
+        {
+            "Frog1Eggs",
+            "Frog2Eggs",
+            "Frog3Eggs",
+            "Frog4Eggs",
+            "Frog5Eggs",
+            "Frog6Eggs",
+            "Frog7Eggs",
+            "Frog8Eggs",
+            "Frog9Eggs",
+            "Frog10Eggs",
+            "FrogGoldEggs",
         });
 
         class GameObjectTTL
@@ -83,13 +119,6 @@ namespace CheatNearbyResourcesHighlight
             public GameObject bar1;
             public GameObject bar2;
             public float time;
-
-            public void Hide()
-            {
-                icon.SetActive(false);
-                bar1?.SetActive(false);
-                bar2?.SetActive(false);
-            }
 
             public void Destroy()
             {
@@ -116,7 +145,9 @@ namespace CheatNearbyResourcesHighlight
             stretchY = Config.Bind("General", "StretchY", 1, "Specifies how high the resource image to stretch.");
             resourceSetStr = Config.Bind("General", "ResourceSet", defaultResourceSet, "List of comma-separated resource ids to look for.");
             cycleResourceKey = Config.Bind("General", "CycleResourceKey", "X", "Key used for cycling resources from the set");
-            larvaeSetStr = Config.Bind("General", "LarvaeSet", defaultLarvaeSet, "List of comma-separated larve ids to look for.");
+            larvaeSetStr = Config.Bind("General", "LarvaeSet", defaultLarvaeSet, "List of comma-separated larvae ids to look for.");
+            fishSetStr = Config.Bind("General", "FishSet", defaultFishSet, "List of comma-separated fish ids to look for.");
+            frogSetStr = Config.Bind("General", "FrogSet", defaultFrogSet, "List of comma-separated frog ids to look for.");
             lineIndicatorLength = Config.Bind("General", "LineIndicatorLength", 5f, "If nonzero, a thin white bar will appear and point to the resource");
             timeToLive = Config.Bind("General", "TimeToLive", 15f, "How long the resource indicators should remain visible, in seconds.");
 
@@ -145,6 +176,8 @@ namespace CheatNearbyResourcesHighlight
                         List<string> scanSetList = new();
                         scanSetList.AddRange(resourceSetStr.Value.Split(','));
                         scanSetList.AddRange(larvaeSetStr.Value.Split(','));
+                        scanSetList.AddRange(fishSetStr.Value.Split(','));
+                        scanSetList.AddRange(frogSetStr.Value.Split(','));
 
                         if (Keyboard.current[Key.LeftShift].isPressed)
                         {
@@ -193,7 +226,6 @@ namespace CheatNearbyResourcesHighlight
                         GameObjectTTL gameObjectTTL = scannerImageList[i];
                         if (Time.time >= gameObjectTTL.time || (gameObjectTTL.resource == null || !gameObjectTTL.resource.activeSelf))
                         {
-                            gameObjectTTL.Hide();
                             gameObjectTTL.Destroy();
                             scannerImageList.RemoveAt(i);
                         }
@@ -215,6 +247,8 @@ namespace CheatNearbyResourcesHighlight
             HashSet<string> scanSet = new HashSet<string>();
             bool hasResources = false;
             bool hasLarvae = false;
+            bool hasFish = false;
+            bool hasFrog = false;
             if (currentResource != null)
             {
                 scanSet.Add(currentResource);
@@ -233,12 +267,21 @@ namespace CheatNearbyResourcesHighlight
                     scanSet.Add(lr);
                     hasLarvae = true;
                 }
+                foreach (string lr in fishSetStr.Value.Split(','))
+                {
+                    scanSet.Add(lr);
+                    hasFish = true;
+                }
+                foreach (string lr in frogSetStr.Value.Split(','))
+                {
+                    scanSet.Add(lr);
+                    hasFrog = true;
+                }
             }
 
             // hide any previously shown scanner images.
             foreach (GameObjectTTL go in scannerImageList)
             {
-                go.Hide();
                 go.Destroy();
             }
             scannerImageList.Clear();
@@ -254,11 +297,11 @@ namespace CheatNearbyResourcesHighlight
             List<Component> candidates = new();
             if (hasResources)
             {
-                candidates.AddRange(FindObjectsOfType<ActionMinable>());
+                candidates.AddRange(FindObjectsByType<ActionMinable>(FindObjectsSortMode.None));
             }
-            if (hasLarvae)
+            if (hasLarvae || hasFish || hasFrog)
             {
-                candidates.AddRange(FindObjectsOfType<ActionGrabable>());
+                candidates.AddRange(FindObjectsByType<ActionGrabable>(FindObjectsSortMode.None));
             }
 
             foreach (Component resource in candidates)

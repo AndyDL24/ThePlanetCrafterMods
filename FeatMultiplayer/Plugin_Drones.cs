@@ -2,6 +2,7 @@
 using FeatMultiplayer.MessageTypes;
 using HarmonyLib;
 using SpaceCraft;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -10,6 +11,12 @@ namespace FeatMultiplayer
 {
     public partial class Plugin : BaseUnityPlugin
     {
+        static readonly Dictionary<int, Vector3> droneTargetCache = new();
+
+        static int droneSupplyCount;
+
+        static int droneDemandCount;
+
         /// <summary>
         /// The vanilla routine assigns tasks to drones periodically.
         /// 
@@ -31,20 +38,65 @@ namespace FeatMultiplayer
         /// <summary>
         /// The vanilla animates the drone position via this method.
         /// 
-        /// We let the clients know of the current position via the world object.
+        /// We let the clients know if the target position changed since the last
+        /// cached information.
+        /// </summary>
+        /// <param name="__instance"></param>
+        /// <param name="___droneWorldObject"></param>
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Drone), "MoveToTarget")]
+        static void Drone_MoveToTarget(Drone __instance, WorldObject ___droneWorldObject, Vector3 _targetPosition)
+        {
+            if (updateMode == MultiplayerMode.CoopHost)
+            {
+                if (___droneWorldObject != null)
+                {
+                    bool targetChanged = false;
+                    var id = ___droneWorldObject.GetId();
+
+                    if (droneTargetCache.TryGetValue(id, out var tpos))
+                    {
+                        if (Vector3.Distance(tpos, _targetPosition) > 0.1)
+                        {
+                            targetChanged = true;
+                            droneTargetCache[id] = _targetPosition;
+                        }
+                    }
+                    else
+                    {
+                        droneTargetCache[id] = _targetPosition;
+                        targetChanged = true;
+                    }
+
+                    if (targetChanged)
+                    {
+                        SendWorldObjectToClients(___droneWorldObject, false);
+
+                        var msg = new MessageDronePosition();
+                        msg.id = ___droneWorldObject.GetId();
+                        msg.position = _targetPosition;
+                        SendAllClients(msg);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// The vanilla animates the drone position via this method.
+        /// 
+        /// We save the drone's position into the world object to minimize jitter.
         /// </summary>
         /// <param name="__instance"></param>
         /// <param name="___droneWorldObject"></param>
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Drone), "MoveToTarget")]
-        static void Drone_MoveToTarget(Drone __instance, WorldObject ___droneWorldObject)
+        static void Drone_MoveToTarget_Post(Drone __instance, WorldObject ___droneWorldObject, Vector3 _targetPosition)
         {
             if (updateMode == MultiplayerMode.CoopHost)
             {
                 if (___droneWorldObject != null)
                 {
                     ___droneWorldObject.SetPositionAndRotation(__instance.gameObject.transform.position, __instance.gameObject.transform.rotation);
-                    SendWorldObjectToClients(___droneWorldObject, false);
                 }
             }
         }
@@ -90,9 +142,31 @@ namespace FeatMultiplayer
                 {
                     ___droneWorldObject.ResetPositionAndRotation();
                     SendWorldObjectToClients(___droneWorldObject, true);
+                    droneTargetCache.Remove(___droneWorldObject.GetId());
+
                     LogInfo("Drone " + ___droneWorldObject?.GetId() + " hidden");
                 }
-                ___associatedDroneStation?.OnDroneEnter();
+                if (___associatedDroneStation.soundOnEnter != null)
+                {
+                    ___associatedDroneStation?.OnDroneEnter();
+                }
+            }
+        }
+
+        /// <summary>
+        /// The vanilla code grabs the world object or takes the item out of the target inventory.
+        /// 
+        /// On the host, we have to immediately update clients when the world object grab happens
+        /// as the game doesn't use grab, but destroys the rendered object.
+        /// </summary>
+        /// <param name="___logisticTask"></param>
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Drone), "DroneLoad")]
+        static void Drone_DroneLoad(LogisticTask ___logisticTask)
+        {
+            if (updateMode == MultiplayerMode.CoopHost && ___logisticTask != null && ___logisticTask.GetIsSpawnedObject())
+            {
+                SendWorldObjectToClients(___logisticTask.GetWorldObjectToMove(), false);
             }
         }
 
@@ -224,6 +298,34 @@ namespace FeatMultiplayer
             }
         }
 
+        static void ReceiveMessageDronePosition(MessageDronePosition msg)
+        {
+            if (updateMode != MultiplayerMode.CoopClient)
+            {
+                return;
+            }
+            if (worldObjectById.TryGetValue(msg.id, out var drone))
+            {
+                var go = drone.GetGameObject();
+                if (go != null)
+                {
+                    var ds = go.GetComponent<DroneSmoother>();
+                    if (ds == null)
+                    {
+                        ds = go.AddComponent<DroneSmoother>();
+                        ds.drone = go.GetComponent<Drone>();
+                    }
+
+                    ds.targetPosition = msg.position;
+
+                    /*
+                    go.transform.position = msg.position;
+                    go.transform.rotation = msg.rotation;
+                    */
+                }
+            }
+        }
+
         internal static void UpdateLogisticEntityFromMessage(Inventory inv, 
             List<string> demandGroups, List<string> supplyGroups, int priority)
         {
@@ -285,9 +387,156 @@ namespace FeatMultiplayer
             if (d != null && d.logisticSelector != null)
             {
                 logisticSelectorSetListsDisplay.Invoke(d.logisticSelector, new object[0]);
+                d.logisticSelector.priority.text = inv.GetLogisticEntity().GetPriority().ToString();
             }
 
+            if (inv.GetLogisticEntity().GetSupplyGroups() == null)
+            {
+                // Avoid crash in SetInventoryStatusInLogistics if
+                // inv is in a task that doesn't have supplygroups initialized yet
+                inv.GetLogisticEntity().SetSupplyGroups(new());
+            }
             Managers.GetManager<LogisticManager>()?.SetInventoryStatusInLogistics(inv);
+        }
+
+        static void SendDroneStats()
+        {
+            var lm = Managers.GetManager<LogisticManager>();
+            if (lm == null)
+            {
+                return;
+            }
+
+            int supplyCount = 0;
+            int demandCount = 0;
+
+            foreach (var kv in lm.GetAllCurrentTasks())
+            {
+                var v = kv.Value;
+
+                if (v.GetTaskState() == LogisticData.TaskState.ToSupply)
+                {
+                    supplyCount++;
+                }
+                else if (v.GetTaskState() == LogisticData.TaskState.ToDemand)
+                {
+                    demandCount++;
+                }
+            }
+
+            var msg = new MessageDroneStats();
+            msg.supplyCount = supplyCount;
+            msg.demandCount = demandCount;
+            SendAllClients(msg);
+        }
+
+        static void ReceiveMessageDroneStats(MessageDroneStats mds)
+        {
+            droneSupplyCount = mds.supplyCount;
+            droneDemandCount = mds.demandCount;
+        }
+
+        /// <summary>
+        /// The vanilla sets up the station counts and starts a coroutine to update task counts.
+        /// 
+        /// We have to override this on the host/client because the station counts can change while we are
+        /// looking at the window. In addition, we don't sync all tasks so we need to update the supply/demand
+        /// counts from a sync message too.
+        /// </summary>
+        /// <param name="__instance"></param>
+        /// <param name="___logisticManager"></param>
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiWindowLogistics), nameof(UiWindowLogistics.OnOpen))]
+        static void UiWindowLogistics_OnOpen(UiWindowLogistics __instance, LogisticManager ___logisticManager)
+        {
+            if (updateMode != MultiplayerMode.SinglePlayer)
+            {
+                __instance.StopAllCoroutines();
+                __instance.StartCoroutine(UiWindowLogistics_UpdateCurrentTaskNumber_Override(__instance, ___logisticManager, 1f));
+            }
+        }
+
+        static IEnumerator UiWindowLogistics_UpdateCurrentTaskNumber_Override(
+            UiWindowLogistics __instance, LogisticManager ___logisticManager, 
+            float timeRepeat)
+        {
+            for (; ; )
+            {
+
+                uiWindowLogisticsSetLogisticsList.Invoke(__instance, new object[] { 
+                    true, __instance.gridSupply, ___logisticManager.GetSupplyInventories() });
+                uiWindowLogisticsSetLogisticsList.Invoke(__instance, new object[] { 
+                    false, __instance.gridDemand, ___logisticManager.GetDemandInventories() });
+
+                UiWindowLogistics_updateCurrentTaskNumber(__instance, ___logisticManager);
+
+                yield return new WaitForSeconds(timeRepeat);
+            }
+        }
+
+        static void UiWindowLogistics_updateCurrentTaskNumber(UiWindowLogistics __instance, LogisticManager ___logisticManager)
+        {
+            Group groupViaId = GroupsHandler.GetGroupViaId(__instance.dronesGroups[0].id);
+            GameObjects.DestroyAllChildren(__instance.gridDrones.gameObject, false);
+            int dronesInLogistics = ___logisticManager.GetDronesInLogistics();
+
+            Instantiate(__instance.groupLineGameObject, __instance.gridDrones.transform)
+                .GetComponent<UiGroupLine>().SetValues(groupViaId, dronesInLogistics, "");
+            
+            int supplyCount = droneSupplyCount;
+            int demandCount = droneDemandCount;
+            if (updateMode == MultiplayerMode.CoopHost)
+            {
+                Dictionary<int, LogisticTask> allCurrentTasks = ___logisticManager.GetAllCurrentTasks();
+                foreach (KeyValuePair<int, LogisticTask> keyValuePair in allCurrentTasks)
+                {
+                    if (keyValuePair.Value.GetTaskState() == LogisticData.TaskState.ToSupply)
+                    {
+                        supplyCount++;
+                    }
+                    else if (keyValuePair.Value.GetTaskState() == LogisticData.TaskState.ToDemand)
+                    {
+                        demandCount++;
+                    }
+                }
+            }
+
+            Instantiate(__instance.groupLineGameObject, __instance.gridDrones.transform)
+                .GetComponent<UiGroupLine>()
+                .SetValues(groupViaId, supplyCount, Localization.GetLocalizedString("Logistic_menu_supply"));
+            Instantiate(__instance.groupLineGameObject, __instance.gridDrones.transform)
+                .GetComponent<UiGroupLine>()
+                .SetValues(groupViaId, demandCount, Localization.GetLocalizedString("Logistic_menu_demand"));
+        }
+    }
+
+    internal class DroneSmoother : MonoBehaviour
+    {
+        internal Drone drone;
+        internal Vector3 targetPosition;
+        internal bool targetReached;
+
+        void Update()
+        {
+            if (drone == null)
+            {
+                return;
+            }
+
+            if (Vector3.Distance(transform.position, targetPosition) >= drone.distanceMinToTarget) 
+            {
+                transform.Translate(0f, 0f, Time.deltaTime * drone.forwardSpeed);
+
+                var tp = targetPosition + Vector3.up * 2f;
+                transform.rotation = Quaternion.Slerp(transform.rotation,
+                    Quaternion.LookRotation(tp - transform.position),
+                    Time.deltaTime * drone.rotationSpeed);
+                targetReached = false;
+            }
+            else
+            {
+                targetReached = true;
+            }
         }
     }
 }

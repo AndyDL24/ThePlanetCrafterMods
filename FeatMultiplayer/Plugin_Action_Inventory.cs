@@ -743,6 +743,12 @@ namespace FeatMultiplayer
                                 _playerController.GetPlayerEquipment(), true);
                             break;
                         }
+                    case DataConfig.EquipableType.MapChip:
+                        {
+                            // Since 0.9.002: the field is not public
+                            playerEquipmentHasMapChip.SetValue(_playerController.GetPlayerEquipment(), true);
+                            break;
+                        }
                 }
             }
         }
@@ -816,6 +822,11 @@ namespace FeatMultiplayer
                 // Since 0.6.006: there is no publicly accessible field to set or method to call
                 playerEquipmentHasCleanConstructionChip.SetValue(
                     player.GetPlayerEquipment(), false);
+            }
+            if (!equipTypes.Contains(DataConfig.EquipableType.MapChip))
+            {
+                // Since 0.9.002: the field is not public
+                playerEquipmentHasMapChip.SetValue(player.GetPlayerEquipment(), false);
             }
             // FIXME backpack and equipment mod unequipping
             float dropDistance = 0.7f;
@@ -1012,7 +1023,7 @@ namespace FeatMultiplayer
 
         static void FindAndGenerateInventoryFromScene(int iid)
         {
-            foreach (var sceneGo in FindObjectsOfType<GameObject>())
+            foreach (var sceneGo in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
             {
                 var sceneInventory = sceneGo.GetComponentInChildren<InventoryFromScene>();
                 if (sceneInventory != null)
@@ -1156,6 +1167,73 @@ namespace FeatMultiplayer
             WorldObjectsHandler.DestroyWorldObject(craftedWo);
             worldObjectCreated = null;
             return false;
+        }
+
+        /// <summary>
+        /// Some machines can be set to clear inventory if they are full.
+        /// 
+        /// We don't do this on the client and let the host handle it.
+        /// </summary>
+        /// <returns></returns>
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDestructInventoryIfFull), "TryToCleanInventory")]
+        static bool MachineDestructInventoryIfFull_TryToCleanInventory()
+        {
+            return updateMode != MultiplayerMode.CoopClient;
+        }
+
+        /// <summary>
+        /// Vanilla calls this when the setting buttons, on the inventory screen, have been clicked.
+        /// 
+        /// We relay this to the other parties.
+        /// </summary>
+        /// <param name="___relatedWorldObject"></param>
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiContainerSettingOnOffButton), "OnClickOnOffButtons")]
+        static void UiContainerSettingOnOffButton_OnClickOnOffButtons(WorldObject ___relatedWorldObject)
+        {
+            if (updateMode == MultiplayerMode.CoopHost)
+            {
+                SendWorldObjectToClients(___relatedWorldObject, false);
+            }
+            else
+            {
+                SendWorldObjectToHost(___relatedWorldObject, false);
+            }
+        }
+
+        /// <summary>
+        /// Vanilla calls it during the setting up of the settings button, on the inventory screen.
+        /// 
+        /// We install a tracker so we can update the visuals if the other side changes the settings
+        /// </summary>
+        /// <param name="___relatedWorldObject"></param>
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiContainerSettingOnOffButton), "SetUiSettingWorldObject")]
+        static void UiContainerSettingOnOffButton_SetUiSettingWorldObject(UiContainerSettingOnOffButton __instance, 
+            WorldObject ___relatedWorldObject, UiOnOffButtons ___uiOnOffButtons)
+        {
+            if (updateMode != MultiplayerMode.SinglePlayer)
+            {
+                __instance.StartCoroutine(UiContainerSettingOnOffButton_Tracker(___relatedWorldObject, ___uiOnOffButtons, 0.25f));
+            }
+        }
+
+        static IEnumerator UiContainerSettingOnOffButton_Tracker(WorldObject ___relatedWorldObject, 
+            UiOnOffButtons ___uiOnOffButtons, float delay)
+        {
+            for (; ; )
+            {
+                // do not trigger ping-pong updates
+                var save = ___uiOnOffButtons.uiOnOffButtonsClick;
+                ___uiOnOffButtons.uiOnOffButtonsClick = e => { };
+
+                ___uiOnOffButtons.SetStatusOfOnOffButtons(___relatedWorldObject.GetSetting() != 0);
+
+                ___uiOnOffButtons.uiOnOffButtonsClick = save;
+
+                yield return new WaitForSeconds(delay);
+            }
         }
     }
 }

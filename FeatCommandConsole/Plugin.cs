@@ -18,6 +18,7 @@ using System.Text;
 using UnityEngine.SceneManagement;
 using System.Linq;
 using System.Collections;
+using BepInEx.Bootstrap;
 
 namespace FeatCommandConsole
 {
@@ -26,8 +27,11 @@ namespace FeatCommandConsole
     // https://github.com/aedenthorn/PlanetCrafterMods/blob/master/SpawnObject/BepInExPlugin.cs
 
     [BepInPlugin("akarnokd.theplanetcraftermods.featcommandconsole", "(Feat) Command Console", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency(modInventoryStackingGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
+
+        const string modInventoryStackingGuid = "akarnokd.theplanetcraftermods.cheatinventorystacking";
 
         static ManualLogSource logger;
 
@@ -40,6 +44,7 @@ namespace FeatCommandConsole
         static ConfigEntry<int> consoleBottom;
         static ConfigEntry<int> fontSize;
         static ConfigEntry<string> fontName;
+        static ConfigEntry<float> transparency;
 
         static GameObject canvas;
         static GameObject background;
@@ -63,6 +68,18 @@ namespace FeatCommandConsole
         const int similarLimit = 3;
 
         static IEnumerator autorefillCoroutine;
+
+        static readonly float defaultTradePlatformDelay = 6;
+        static float tradePlatformDelay = defaultTradePlatformDelay;
+
+        static readonly float defaultOutsideGrowerDelay = 1;
+        static float outsideGrowerDelay = defaultOutsideGrowerDelay;
+
+        static bool suppressCommandConsoleKey;
+
+        static Plugin me;
+
+        static Func<Inventory, int> GetInventoryCapacity;
 
         // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
         // API
@@ -97,6 +114,7 @@ namespace FeatCommandConsole
             Logger.LogInfo($"Plugin is loaded!");
 
             logger = Logger;
+            me = this;
 
             modEnabled = Config.Bind("General", "Enabled", true, "Enable this mod");
             debugMode = Config.Bind("General", "DebugMode", false, "Enable the detailed logging of this mod");
@@ -108,6 +126,7 @@ namespace FeatCommandConsole
             consoleBottom = Config.Bind("General", "ConsoleBottom", 200, "Console window's position relative to the bottom of the screen.");
             fontSize = Config.Bind("General", "FontSize", 20, "The font size in the console");
             fontName = Config.Bind("General", "FontName", "arial.ttf", "The font name in the console");
+            transparency = Config.Bind("General", "Transparency", 0.98f, "How transparent the console background should be (0..1).");
 
             if (!toggleKey.Value.Contains("<"))
             {
@@ -132,7 +151,14 @@ namespace FeatCommandConsole
             }
 
             log("   Set asset");
-            fontAsset = TMP_FontAsset.CreateFontAsset(osFont);
+            try
+            {
+                fontAsset = TMP_FontAsset.CreateFontAsset(osFont);
+            } 
+            catch (Exception)
+            {
+                log("Setting custom font failed, using default game font");
+            }
 
             createWelcomeText();
 
@@ -151,6 +177,17 @@ namespace FeatCommandConsole
 
                     log("  " + ca.name + " - " + ca.description);
                 }
+            }
+
+            if (Chainloader.PluginInfos.TryGetValue(modInventoryStackingGuid, out var pi))
+            {
+                logger.LogInfo("Mod " + modInventoryStackingGuid + " found, using its services.");
+                var m = AccessTools.Method(pi.Instance.GetType(), "GetInventoryCapacity", new Type[] { typeof(Inventory) });
+                GetInventoryCapacity = AccessTools.MethodDelegate<Func<Inventory, int>>(m, pi.Instance);
+            }
+            else
+            {
+                logger.LogInfo("Mod " + modInventoryStackingGuid + " not found, inventories are treated as vanilla.");
             }
 
             Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -320,13 +357,17 @@ namespace FeatCommandConsole
             {
                 return;
             }
+            if (suppressCommandConsoleKey)
+            {
+                return;
+            }
 
             logger.LogInfo("GetHasUiOpen: " + wh.GetHasUiOpen() + ", Background null?" + (background == null));
 
             canvas = new GameObject("CommandConsoleCanvas");
             var c = canvas.AddComponent<Canvas>();
             c.renderMode = RenderMode.ScreenSpaceOverlay;
-            c.transform.SetAsLastSibling();
+            c.sortingOrder = 500;
 
             log("Creating the background");
 
@@ -348,7 +389,7 @@ namespace FeatCommandConsole
             background = new GameObject("CommandConsoleBackground");
             background.transform.parent = canvas.transform;
             var img = background.AddComponent<Image>();
-            img.color = new Color(0.2f, 0.2f, 0.2f, 0.95f);
+            img.color = new Color(0.2f, 0.2f, 0.2f, transparency.Value);
             rect = img.GetComponent<RectTransform>();
             rect.localPosition = new Vector3(panelX, panelY, 0); // new Vector3(-Screen.width / 2 + consoleLeft.Value, Screen.height / 2 - consoleTop.Value, 0);
             rect.sizeDelta = new Vector2(panelWidth, panelHeight);
@@ -511,6 +552,20 @@ namespace FeatCommandConsole
         {
             // by default, Enter toggles any UI. prevent this while our console is open
             return background == null;
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiWindowTextInput), nameof(UiWindowTextInput.OnClose))]
+        static void UiWindowTextInput_OnClose()
+        {
+            suppressCommandConsoleKey = true;
+            me.StartCoroutine(ConsoleKeyUnlocker());
+        }
+
+        static IEnumerator ConsoleKeyUnlocker()
+        {
+            yield return new WaitForSecondsRealtime(0.25f);
+            suppressCommandConsoleKey = false;
         }
 
         static void addLine(string line)
@@ -677,7 +732,7 @@ namespace FeatCommandConsole
 
                     if (g == null)
                     {
-                        DidYouMean(gid, false);
+                        DidYouMean(gid, false, true);
                     }
                     else if (!(g is GroupItem))
                     {
@@ -1414,7 +1469,7 @@ namespace FeatCommandConsole
                 }
                 else
                 {
-                    var gr = GroupsHandler.GetGroupViaId(args[1]);
+                    var gr = FindGroup(args[1]);
                     if (gr != null)
                     {
                         addLine("<margin=1em>Unlocked: <color=#FFFFFF>" + gr.id + "</color> <color=#00FF00>\"" + Readable.GetGroupName(gr) + "\"");
@@ -1423,7 +1478,7 @@ namespace FeatCommandConsole
                     }
                     else
                     {
-                        addLine("<margin=1em><color=#FF0000>Unknown technology");
+                        DidYouMean(args[1], true, true);
                     }
                 }
             }
@@ -1469,7 +1524,7 @@ namespace FeatCommandConsole
                 }
                 else
                 {
-                    var gr = GroupsHandler.GetGroupViaId(args[1]);
+                    var gr = FindGroup(args[1]);
                     if (gr != null)
                     {
                         addLine("<margin=1em>Unlocked: <color=#FFFFFF>" + gr.id + "</color> <color=#00FF00>\"" + Readable.GetGroupName(gr) + "\"");
@@ -1478,7 +1533,7 @@ namespace FeatCommandConsole
                     }
                     else
                     {
-                        addLine("<margin=1em><color=#FF0000>Unknown technology");
+                        DidYouMean(args[1], true, true);
                     }
                 }
             }
@@ -1526,7 +1581,7 @@ namespace FeatCommandConsole
             return null;
         }
 
-        void DidYouMean(string gid, bool isStructure)
+        void DidYouMean(string gid, bool isStructure, bool isItem)
         {
             List<string> similar = FindSimilar(gid, GroupsHandler.GetAllGroups()
                 .Where(g => { 
@@ -1534,9 +1589,9 @@ namespace FeatCommandConsole
                     {
                         return true;
                     }
-                    return !isStructure && g is GroupItem;
+                    return isItem && g is GroupItem;
                 })
-                .Select(g => g.id.ToLower(CultureInfo.InvariantCulture)));
+                .Select(g => g.id));
             if (similar.Count != 0)
             {
                 similar.Sort();
@@ -1584,15 +1639,19 @@ namespace FeatCommandConsole
                 var gr = FindGroup(args[1]);
                 if (gr == null)
                 {
-                    DidYouMean(args[1], false);
+                    DidYouMean(args[1], true, true);
                 }
                 else
                 {
                     addLine("<margin=1em><b>ID:</b> <color=#00FF00>" + gr.id);
                     addLine("<margin=1em><b>Name:</b> <color=#00FF00>" + Readable.GetGroupName(gr));
                     addLine("<margin=1em><b>Description:</b> <color=#00FF00>" + Readable.GetGroupDescription(gr));
-                    addLine("<margin=1em><b>Is unlocked:</b> <color=#00FF00>" + GroupsHandler.IsGloballyUnlocked(gr));
-                    addLine("<margin=2em><b>Unlocked at:</b> <color=#00FF00>" + string.Format("{0:#,##0}", gr.GetUnlockingInfos().GetUnlockingValue()) + " " + gr.GetUnlockingInfos().GetWorldUnit());
+                    var unlockInfo = gr.GetUnlockingInfos();
+                    addLine("<margin=1em><b>Is Unlocked:</b>");
+                    addLine("<margin=2em><b>Globally:</b> <color=#00FF00>" + GroupsHandler.IsGloballyUnlocked(gr));
+                    addLine("<margin=2em><b>Blueprint:</b> <color=#00FF00>" + unlockInfo.GetIsUnlockedViaBlueprint());
+                    addLine("<margin=2em><b>Progress:</b> <color=#00FF00>" + unlockInfo.GetIsUnlocked());
+                    addLine("<margin=2em><b>At:</b> <color=#00FF00>" + string.Format("{0:#,##0}", unlockInfo.GetUnlockingValue()) + " " + unlockInfo.GetWorldUnit());
                     if (gr is GroupItem gi)
                     {
                         addLine("<margin=1em><b>Class:</b> Item");
@@ -1613,7 +1672,6 @@ namespace FeatCommandConsole
                             addLine("<margin=2em><b>Subcategory:</b> <color=#00FF00>" + gi.GetItemSubCategory());
                         }
                         addLine("<margin=2em><b>Value:</b> <color=#00FF00>" + gi.GetGroupValue());
-
                         List<string> list = new();
                         foreach (var e in Enum.GetValues(typeof(DataConfig.CraftableIn)))
                         {
@@ -1646,10 +1704,27 @@ namespace FeatCommandConsole
                         var ggi = gi.GetGrowableGroup();
                         if (ggi != null)
                         {
-                            addLine("<margin=2em><b>Grows:</b> <color=#00FF00>" + ggi.GetId() + " \"" + Readable.GetGroupName(ggi));
+                            addLine("<margin=2em><b>Grows:</b> <color=#00FF00>" + ggi.GetId() + " \"" + Readable.GetGroupName(ggi) + "\"");
+                        }
+                        var ulg = gi.GetUnlocksGroup();
+                        if (ulg != null)
+                        {
+                            addLine("<margin=2em><b>Grows:</b> <color=#00FF00>" + ulg.GetId() + " \"" + Readable.GetGroupName(ulg) + "\"");
+                        }
+
+                        EffectOnPlayer eff = gi.GetEffectOnPlayer();
+                        if (eff != null)
+                        {
+                            addLine("<margin=2em><b>Effect on player:</b> <color=#00FF00>" + eff.effectOnPlayer + " (" + eff.durationInSeconds + " seconds");
                         }
                         addLine("<margin=2em><b>Chance to spawn:</b> <color=#00FF00>" + gi.GetChanceToSpawn());
                         addLine("<margin=2em><b>Destroyable:</b> <color=#00FF00>" + !gi.GetCantBeDestroyed());
+                        addLine("<margin=2em><b>Hide in crafter:</b> <color=#00FF00>" + gi.GetHideInCrafter()); ;
+                        addLine("<margin=2em><b>Logistics display type:</b> <color=#00FF00>" + gi.GetLogisticDisplayType());
+                        addLine("<margin=2em><b>Recycleable:</b> <color=#00FF00>" + !gi.GetCantBeRecycled());
+                        addLine("<margin=2em><b>World pickup by drone:</b> <color=#00FF00>" + gi.GetCanBePickedUpFromWorldByDrones());
+                        addLine("<margin=2em><b>Trade category:</b> <color=#00FF00>" + gi.GetTradeCategory());
+                        addLine("<margin=2em><b>Trade value:</b> <color=#00FF00>" + gi.GetTradeValue());
                     }
                     else if (gr is GroupConstructible gc)
                     {
@@ -1751,13 +1826,28 @@ namespace FeatCommandConsole
 
         IEnumerator AutoRefillCoroutine()
         {
-            for (; ; ) { 
-                var pm = Managers.GetManager<PlayersManager>().GetActivePlayerController();
-                var gh = pm.GetGaugesHandler();
-                gh.AddHealth(100);
-                gh.AddWater(100);
-                gh.AddOxygen(1000);
-                    yield return new WaitForSeconds(1);
+            for (; ; ) {
+                var pc = Managers.GetManager<PlayersManager>();
+                if (pc != null)
+                {
+                    var pm = pc.GetActivePlayerController();
+                    if (pm != null)
+                    {
+                        var gh = pm.GetGaugesHandler();
+                        if (gh != null)
+                        {
+                            gh.AddHealth(100);
+                            gh.AddWater(100);
+                            gh.AddOxygen(1000);
+
+                            yield return new WaitForSeconds(1);
+
+                            continue;
+                        }
+                    }
+                }
+                autorefillCoroutine = null;
+                break;
             }
         }
 
@@ -1961,7 +2051,7 @@ namespace FeatCommandConsole
         [Command("/list-larvae-zones", "Lists the larvae zones and the larvae that can spawn there.")]
         public void ListLarvaeZones(List<string> args)
         {
-            var sectors = FindObjectsOfType<Sector>();
+            var sectors = FindObjectsByType<Sector>(FindObjectsSortMode.None);
             Logger.LogInfo("Sector count: " + sectors.Length);
             foreach (Sector sector in sectors)
             {
@@ -1975,7 +2065,7 @@ namespace FeatCommandConsole
                 SceneManager.LoadScene(name, LoadSceneMode.Additive);
             }
 
-            foreach (LarvaeZone lz in FindObjectsOfType<LarvaeZone>())
+            foreach (LarvaeZone lz in FindObjectsByType<LarvaeZone>(FindObjectsSortMode.None))
             {
                 var pool = lz.GetLarvaesToAddToPool();
                 var bounds = lz.GetComponent<Collider>().bounds;
@@ -1983,7 +2073,7 @@ namespace FeatCommandConsole
                 var extents = bounds.extents;
 
                 var captureLarvaeZoneCurrentSector = "";
-                foreach (SectorEnter sector in FindObjectsOfType<SectorEnter>())
+                foreach (SectorEnter sector in FindObjectsByType<SectorEnter>(FindObjectsSortMode.None))
                 {
                     if (sector.collider != null)
                     {
@@ -2066,7 +2156,7 @@ namespace FeatCommandConsole
                     SpaceCraft.Group g = FindGroup(gid);
                     if (g == null)
                     {
-                        DidYouMean(gid, true);
+                        DidYouMean(gid, true, false);
                     }
                     else if (!(g is GroupConstructible))
                     {
@@ -2208,9 +2298,1106 @@ namespace FeatCommandConsole
             RecreateBackground(Managers.GetManager<WindowsHandler>());
         }
 
+        [Command("/meteor", "Triggers or lists the available meteor events")]
+        public void Meteor(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Triggers or lists the available meteor events.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/meteor list</color> - Lists the queued and all meteor events");
+                addLine("<margin=2em><color=#FFFF00>/meteor clear</color> - Clears all queued meteor events");
+                addLine("<margin=2em><color=#FFFF00>/meteor eventId</color> - Triggers the meteor events by its case-insensitive name");
+                addLine("<margin=2em><color=#FFFF00>/meteor eventNumber</color> - Triggers the meteor events by its number");
+            }
+            else 
+            {
+                var mh = Managers.GetManager<MeteoHandler>();
+                var list = (List<MeteoEventData>)AccessTools.Field(typeof(MeteoHandler), "meteoEvents").GetValue(mh);
+                var queue = (List<MeteoEventData>)AccessTools.Field(typeof(MeteoHandler), "meteoEventQueue").GetValue(mh);
+                var curr = (MeteoEventData)AccessTools.Field(typeof(MeteoHandler), "selectedDataMeteoEvent").GetValue(mh);
+                if (args[1] == "list")
+                {
+                    addLine("<margin=1em>Current meteor event:");
+                    if (curr != null)
+                    {
+                        CreateMeteorEventLines(0, curr);
+                    }
+                    else
+                    {
+                        addLine("<margin=2em>None.");
+                    }
+
+                    addLine("<margin=1em>Queued meteor events:");
+                    if (queue.Count == 0)
+                    {
+                        addLine("<margin=2em>None.");
+                    }
+                    else
+                    {
+                        for (int i = 0; i < queue.Count; i++)
+                        {
+                            CreateMeteorEventLines(i, queue[i]);
+                        }
+                    }
+                    addLine("<margin=1em>All meteor events:");
+                    if (list.Count == 0)
+                    {
+                        addLine("<margin=2em>None.");
+                    }
+                    else
+                    {
+                        for (int i = 0; i < list.Count; i++)
+                        {
+                            CreateMeteorEventLines(i, list[i]);
+                        }
+                    }
+                }
+                else
+                if (args[1] == "clear")
+                {
+                    addLine("<margin=1em>Queued meteor events cleared [" + queue.Count + "].");
+                    queue.Clear();
+                }
+                else
+                {
+                    try
+                    {
+                        int n = int.Parse(args[1]);
+                        if (n < 0 && n >= list.Count)
+                        {
+                            addLine("<margin=1em><color=#FF0000>Meteor event index out of range.");
+                        }
+                        else
+                        {
+                            mh.QueueMeteoEvent(list[n]);
+                            addLine("<margin=1em>Meteor event <color=#00FF00>" + list[n].name + "</color> queued.");
+                            if (list[n].asteroidEventData != null)
+                            {
+                                addLine("<margin=3em>Resources: " + GetAsteroidSpawn(list[n].asteroidEventData));
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        var found = false;
+                        var name = args[1].ToLowerInvariant();
+                        foreach (var me in list)
+                        {
+                            if (me.name.ToLowerInvariant() == name)
+                            {
+                                mh.QueueMeteoEvent(me);
+                                addLine("<margin=1em>Meteor event <color=#00FF00>" + me.name + "</color> queued.");
+                                if (me.asteroidEventData != null)
+                                {
+                                    addLine("<margin=3em>Resources: " + GetAsteroidSpawn(me.asteroidEventData));
+                                }
+                                found = true;
+                            }
+                        }
+
+                        if (!found)
+                        {
+                            addLine("<margin=1em><color=#FF0000>Meteor event not found.");
+
+                            var candidates = new List<string>();
+
+                            foreach (var me in list)
+                            {
+                                if (me.name.ToLowerInvariant().Contains(name))
+                                {
+                                    candidates.Add(me.name);
+                                }
+                            }
+                            if (candidates.Count > 0)
+                            {
+                                addLine("<margin=1em><color=#FF0000>Unknown meteor event.</color> Did you mean?");
+                                foreach (var line in joinPerLine(candidates, 5))
+                                {
+                                    addLine("<margin=2em>" + line);
+                                }
+
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        [Command("/list-items-nearby", "Lists the world object ids and their types within a radius")]
+        public void ItemsNearby(List<string> args)
+        {
+            if (args.Count == 1)
+            {
+                addLine("<margin=1em>Lists the world object ids and their types within a radius.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/list-items-nearby radius [typefilter]</color> - List the items with group type name containing the optional typefilter");
+            }
+            else
+            {
+                string filter = "";
+                if (args.Count > 2)
+                {
+                    filter = args[2].ToLowerInvariant();
+                }
+                float radius = float.Parse(args[1], CultureInfo.InvariantCulture);
+
+                var pm = Managers.GetManager<PlayersManager>().GetActivePlayerController();
+                var pp = pm.transform.position;
+
+                List<WorldObject> found = new();
+                foreach (var wo in WorldObjectsHandler.GetAllWorldObjects())
+                {
+                    if (wo.GetIsPlaced() && Vector3.Distance(pp, wo.GetPosition()) < radius)
+                    {
+                        if (wo.GetGroup().id.ToLowerInvariant().Contains(filter))
+                        {
+                            found.Add(wo);
+                        }
+                    }
+                }
+                addLine("<margin=1em>Found " + found.Count + " world objects");
+                foreach (var wo in found) {
+                    addLine("<margin=2em>" 
+                        + wo.GetId() + " - " 
+                        + wo.GetGroup().GetId() 
+                        + " <color=#00FF00>\"" + Readable.GetGroupName(wo.GetGroup()) 
+                        + "\"</color>  @ " + wo.GetPosition() + " (" + string.Format("{0:0.#}", Vector3.Distance(wo.GetPosition(), pp)) + ")");
+                }
+            }
+        }
+
+        [Command("/delete-item", "Deletes a world object specified by its unique id")]
+        public void DeleteItem(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Deletes a world object specified by its unique id.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/delete-item id</color> - Deletes a world object (and its game object) by the given id");
+            }
+            else
+            {
+                int id = int.Parse(args[1]);
+
+                int cnt = 0;
+                var wos = WorldObjectsHandler.GetAllWorldObjects();
+                for (int i = wos.Count - 1; i >= 0; i--)
+                {
+                    var wo = wos[i];
+                    if (wo.GetId() == id)
+                    {
+                        wos.RemoveAt(i);
+                        Destroy(wo.GetGameObject());
+                        cnt++;
+                    }
+                }
+
+                if (cnt == 0)
+                {
+                    addLine("<margin=1em><color=#FF0000>World object not found.");
+                }
+                else if (cnt == 1)
+                {
+                    addLine("<margin=1em>World object deleted.");
+                }
+                else
+                {
+                    addLine("<margin=1em>World object & duplicates deleted x " + cnt + ".");
+                }
+            }
+        }
+
+        [Command("/move-item", "Moves an item to the specified absolute position.")]
+        public void MoveItem(List<string> args)
+        {
+            if (args.Count != 5)
+            {
+                addLine("<margin=1em>Moves an item to the specified absolute position.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/move-item id x y z</color> - Moves a world object identified by its id to the position x, y, z");
+            }
+            else
+            {
+                int id = int.Parse(args[1]);
+                float x = float.Parse(args[2], CultureInfo.InvariantCulture);
+                float y = float.Parse(args[3], CultureInfo.InvariantCulture);
+                float z = float.Parse(args[4], CultureInfo.InvariantCulture);
+
+                int cnt = 0;
+                var wos = WorldObjectsHandler.GetAllWorldObjects();
+                for (int i = 0; i < wos.Count; i++)
+                {
+                    var wo = wos[i];
+                    if (wo.GetId() == id && wo.GetIsPlaced())
+                    {
+                        wo.SetPositionAndRotation(new Vector3(x, y, z), wo.GetRotation());
+
+                        var go = wo.GetGameObject();
+                        if (go != null)
+                        {
+                            go.transform.position = wo.GetPosition();
+                        }
+
+                        cnt++;
+                    }
+                }
+
+                if (cnt == 0)
+                {
+                    addLine("<margin=1em><color=#FF0000>World object not found.");
+                }
+                else if (cnt == 1)
+                {
+                    addLine("<margin=1em>World object moved.");
+                }
+                else
+                {
+                    addLine("<margin=1em>World object & duplicates moved x " + cnt + ".");
+                }
+            }
+        }
+
+        [Command("/move-item-relative", "Moves an item by the specified relative amount")]
+        public void MoveItemRelative(List<string> args)
+        {
+            if (args.Count != 5)
+            {
+                addLine("<margin=1em>Moves an item by the specified relative amount.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/move-item-relative id x y z</color> - Moves a world object identified by its id relative by x, y, z");
+            }
+            else
+            {
+                int id = int.Parse(args[1]);
+                float x = float.Parse(args[2], CultureInfo.InvariantCulture);
+                float y = float.Parse(args[3], CultureInfo.InvariantCulture);
+                float z = float.Parse(args[4], CultureInfo.InvariantCulture);
+
+                int cnt = 0;
+                var wos = WorldObjectsHandler.GetAllWorldObjects();
+                for (int i = 0; i < wos.Count; i++)
+                {
+                    var wo = wos[i];
+                    if (wo.GetId() == id && wo.GetIsPlaced())
+                    {
+                        wo.SetPositionAndRotation(wo.GetPosition() + new Vector3(x, y, z), wo.GetRotation());
+                        var go = wo.GetGameObject();
+                        if (go != null)
+                        {
+                            go.transform.position = wo.GetPosition();
+                        }
+                        cnt++;
+                    }
+                }
+
+                if (cnt == 0)
+                {
+                    addLine("<margin=1em><color=#FF0000>World object not found.");
+                }
+                else if (cnt == 1)
+                {
+                    addLine("<margin=1em>World object moved.");
+                }
+                else
+                {
+                    addLine("<margin=1em>World object & duplicates moved x " + cnt + ".");
+                }
+            }
+        }
+
+        [Command("/list-duplicates", "Lists the ids of duplicated world objects")]
+        public void ListDuplicates(List<string> args)
+        {
+            HashSet<int> ids = new();
+            Dictionary<int, int> duplicates = new();
+
+            var wos = WorldObjectsHandler.GetAllWorldObjects();
+            for (int i = 0; i < wos.Count; i++)
+            {
+                var wo = wos[i];
+                var id = wo.GetId();
+                if (!ids.Add(id))
+                {
+                    duplicates.TryGetValue(id, out var c);
+                    duplicates[id] = c + 1;
+                }
+            }
+
+            if (duplicates.Count > 0)
+            {
+                addLine("<margin=1em>Item duplicates found: " + duplicates.Count);
+                foreach (var kv in duplicates)
+                {
+                    var wo = WorldObjectsHandler.GetWorldObjectViaId(kv.Key);
+                    addLine("<margin=2em>" + (kv.Value + 1) + " x " + kv.Key + " - " 
+                        + wo.GetGroup().GetId() 
+                        + " <color=#00FF00>\"" + Readable.GetGroupName(wo.GetGroup()) + "\"");
+                }
+            }
+            else
+            {
+                addLine("<margin=1em>No item duplicates found.");
+            }
+
+            duplicates.Clear();
+            ids.Clear();
+
+            foreach (var inv in InventoriesHandler.GetAllInventories())
+            {
+                foreach (var wo in inv.GetInsideWorldObjects())
+                {
+                    int id = wo.GetId();
+                    if (!duplicates.ContainsKey(id))
+                    {
+                        duplicates.Add(id, inv.GetId());
+                    }
+                    else
+                    {
+                        ids.Add(id);
+                    }
+                }
+            }
+            if (ids.Count > 0)
+            {
+                addLine("<margin=1em>Inventory duplicates found: " + duplicates.Count);
+                foreach (var kv in ids)
+                {
+                    var wo = WorldObjectsHandler.GetWorldObjectViaId(kv);
+                    addLine("<margin=2em>" + kv + " - "
+                        + wo.GetGroup().GetId()
+                        + " <color=#00FF00>\"" + Readable.GetGroupName(wo.GetGroup()) + "\"");
+                }
+            }
+            else
+            {
+                addLine("<margin=1em>No inventory duplicates found.");
+            }
+        }
+
+        [Command("/delete-duplicates", "Deletes all but one of each duplicate world objects.")]
+        public void DeleteDuplicates(List<string> args)
+        {
+            HashSet<int> ids = new();
+            Dictionary<int, int> duplicates = new();
+            int excess = 0;
+
+            var wos = WorldObjectsHandler.GetAllWorldObjects();
+            for (int i = 0; i < wos.Count; i++)
+            {
+                var wo = wos[i];
+                var id = wo.GetId();
+                if (!ids.Add(id))
+                {
+                    duplicates.TryGetValue(id, out var c);
+                    duplicates[id] = c + 1;
+                    excess++;
+                }
+            }
+
+            for (int i = wos.Count - 1; i >= 0; i--)
+            {
+                WorldObject wo = wos[i];
+                var id = wo.GetId();
+                duplicates.TryGetValue(id, out var c);
+                if (c > 0)
+                {
+                    wos.RemoveAt(i);
+                    duplicates[id] = c - 1;
+
+                    Destroy(wo.GetGameObject());
+                }
+            }
+
+            if (duplicates.Count > 0)
+            {
+                addLine("<margin=1em>Item duplicates removed: " + excess);
+            }
+            else
+            {
+                addLine("<margin=1em>No item duplicates found.");
+            }
+
+            duplicates.Clear();
+            ids.Clear();
+
+            foreach (var inv in InventoriesHandler.GetAllInventories())
+            {
+                List<WorldObject> list = inv.GetInsideWorldObjects();
+
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    WorldObject wo = list[i];
+                    int id = wo.GetId();
+
+                    if (!duplicates.ContainsKey(id))
+                    {
+                        duplicates.Add(id, inv.GetId());
+                    }
+                    else
+                    {
+                        ids.Add(id);
+                        list.RemoveAt(i);
+                    }
+                }
+            }
+
+            if (ids.Count > 0)
+            {
+                addLine("<margin=1em>Inventory duplicates removed: " + ids.Count);
+            }
+            else
+            {
+                addLine("<margin=1em>No inventory duplicates found.");
+            }
+        }
+
+        static string MeteoEventDataToString(int idx, MeteoEventData med)
+        {
+            return string.Format("{0:00}. <color=#00FF00>{1}</color> [{2:#,##0} <= TI <= {3:#,##0}]", 
+                idx, 
+                med.name,
+                med.startTerraformStage?.GetStageStartValue() ?? 0f,
+                med.stopTerraformStage?.GetStageStartValue() ?? float.PositiveInfinity);
+        }
+
+        static string GetAsteroidSpawn(AsteroidEventData asteroidEventData)
+        {
+            var list = asteroidEventData.asteroidGameObject?.GetComponent<Asteroid>()?.groupsSelected;
+
+            if (list != null && list.Count != 0)
+            {
+                return "<color=#00FF00>" + string.Join("</color>, <color=#00FF00>", list.Select(g => g.id).Distinct()) + "</color>";
+            }
+            return "No resources";
+        }
+
+        void CreateMeteorEventLines(int idx, MeteoEventData med)
+        {
+            addLine("<margin=2em>" + MeteoEventDataToString(idx, med));
+            if (med.asteroidEventData != null)
+            {
+                addLine("<margin=3em>Resources: " + GetAsteroidSpawn(med.asteroidEventData));
+            }
+        }
+
+        [Command("/add-token", "Adds the specified amount to the Trade Token value")]
+        public void AddToken(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Adds the specified amount to the Trade Token value");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/add-token amount</color> - Trade Token += amount");
+            }
+            else
+            {
+                var n = float.Parse(args[1], CultureInfo.InvariantCulture);
+                TokensHandler.GainTokens((int)n);
+                n = TokensHandler.GetTokensNumber();
+                addLine("<margin=1em>Trade Tokens updated. Now at <color=#00FF00>" + string.Format("{0:#,##0}", n));
+            }
+        }
+
+        [Command("/set-trade-rocket-delay", "Sets the trading rockets' progress delay in seconds.")]
+        public void SetTradeDelay(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Sets the trading rocket's progress delay in seconds. Total rocket time is 100 x this amount.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/set-trade-rocket-delay seconds</color> - Set the progress delay in seconds (fractions allowed)");
+                addLine("<margin=1em>Current trading rocket progress delay: <color=#00FF00>" + string.Format("{0:#,##0.00} s", tradePlatformDelay));
+            }
+            else
+            {
+                tradePlatformDelay = float.Parse(args[1], CultureInfo.InvariantCulture);
+                
+                addLine("<margin=1em>Trading rocket progress delay updated. Now at <color=#00FF00>" + string.Format("{0:#,##0.00} s", tradePlatformDelay));
+
+                FieldInfo ___updateGrowthEvery = AccessTools.Field(typeof(MachineTradePlatform), "updateGrowthEvery");
+
+                foreach (var wo in WorldObjectsHandler.GetConstructedWorldObjects())
+                {
+                    var go = wo.GetGameObject();
+                    if (go != null)
+                    {
+                        var platform = go.GetComponent<MachineTradePlatform>();
+                        if (platform != null)
+                        {
+                            ___updateGrowthEvery.SetValue(platform, tradePlatformDelay);
+                        }
+                    }
+                }
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(MachineTradePlatform), nameof(MachineTradePlatform.SetWorldObjectForTradePlatform))]
+        static void MachineTradePlatform_SetWorldObjectForTradePlatform(ref float ___updateGrowthEvery)
+        {
+            ___updateGrowthEvery = tradePlatformDelay;
+        }
+
+        [Command("/list-golden-containers", "Lists all loaded-in golden containers.")]
+        public void ListGoldenContainers(List<string> args)
+        {
+            int range = 0;
+            if (args.Count > 1)
+            {
+                range = int.Parse(args[1]);
+            }
+
+            var pm = Managers.GetManager<PlayersManager>().GetActivePlayerController();
+            var player = pm.transform.position;
+
+            int i = 0;
+            foreach (var wos in FindObjectsByType<WorldObjectFromScene>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                var gd = wos.GetGroupData();
+                if (gd.id == "GoldenContainer")
+                {
+                    if (i == 0)
+                    {
+                        addLine("<margin=1em>Golden Containers found:");
+                    }
+                    var p = wos.transform.position;
+                    var d = Vector3.Distance(player, p);
+                    if (range == 0 || d <= range)
+                    {
+                        addLine(string.Format("<margin=2em>{0:00} @ {1}, Range: {2}, Id: {3}, [{4}]", i, p, (int)d, wos.GetUniqueId(), wos.gameObject.activeSelf));
+                    }
+                    i++;
+                }
+            }
+
+            if (i == 0)
+            {
+                addLine("<margin=1em>No containers found.");
+            }
+        }
+
+        [Command("/save-stats", "Display save statistics.")]
+        public void SaveStats(List<string> args)
+        {
+            int totalWorldObjects = 0;
+            int sceneWorldObjects = 0;
+            int placedSceneItems = 0;
+            int sceneWorldObjectsInventory = 0;
+
+            int playerWorldObjects = 0;
+            int playerStructures = 0;
+            int playerPlacedItems = 0;
+            int playerWorldObjectsInventory = 0;
+
+            int drones = 0;
+            int dronesActive = 0;
+            int dronesCarrying = 0;
+
+            foreach (var wo in WorldObjectsHandler.GetAllWorldObjects())
+            {
+                totalWorldObjects++;
+                if (WorldObjectsIdHandler.IsWorldObjectFromScene(wo.GetId()))
+                {
+                    sceneWorldObjects++;
+                    if (wo.GetIsPlaced())
+                    {
+                        placedSceneItems++;
+                    }
+                    if (wo.GetLinkedInventoryId() != 0)
+                    {
+                        sceneWorldObjectsInventory++;
+                    }
+                }
+                else
+                {
+                    playerWorldObjects++;
+                    if (wo.GetGroup() is GroupConstructible)
+                    {
+                        playerStructures++;
+                    }
+                    if (wo.GetGroup() is GroupItem && wo.GetIsPlaced())
+                    {
+                        playerPlacedItems++;
+                    }
+                    if (wo.GetLinkedInventoryId() != 0)
+                    {
+                        playerWorldObjectsInventory++;
+                    }
+                }
+
+                var gr = wo.GetGroup();
+                if (gr is GroupItem && gr.id.StartsWith("Drone"))
+                {
+                    drones++;
+                    if (wo.GetIsPlaced())
+                    {
+                        dronesActive++;
+                    }
+                    var inv = InventoriesHandler.GetInventoryById(wo.GetLinkedInventoryId());
+                    if (inv != null)
+                    {
+                        dronesCarrying += inv.GetInsideWorldObjects().Count;
+                    }
+                }
+            }
+
+            int totalInventories = 0;
+            int sceneInventories = 0;
+            int playerInventories = 0;
+            int totalItemsInInventory = 0;
+            int totalInventoryCapacity = 0;
+
+            int supplyItemCount = 0;
+            int supplyCapacity = 0;
+            int demandItemCount = 0;
+            int demandCapacity = 0;
+            int supplyInventoryCount = 0;
+            int demandInventoryCount = 0;
+            int logisticsInventoryCount = 0;
+
+            foreach (var inv in InventoriesHandler.GetAllInventories())
+            {
+                totalInventories++;
+                if (WorldObjectsIdHandler.IsWorldObjectFromScene(inv.GetId()))
+                {
+                    sceneInventories++;
+                }
+                else
+                {
+                    playerInventories++;
+                    totalItemsInInventory += inv.GetInsideWorldObjects().Count;
+                }
+                if (GetInventoryCapacity != null)
+                {
+                    totalInventoryCapacity += GetInventoryCapacity(inv);
+                }
+                else
+                {
+                    totalInventoryCapacity += inv.GetSize();
+                }
+
+                var le = inv.GetLogisticEntity();
+                if (le != null)
+                {
+                    bool logisticsRelated = false;
+                    {
+                        var sg = le.GetSupplyGroups();
+                        if (sg != null && sg.Count != 0)
+                        {
+                            supplyInventoryCount++;
+                            logisticsRelated = true;
+
+                            if (GetInventoryCapacity != null)
+                            {
+                                supplyCapacity += GetInventoryCapacity(inv);
+                            }
+                            else
+                            {
+                                supplyCapacity += inv.GetSize();
+                            }
+
+                            var hash = new HashSet<string>(sg.Select(v => v.id));
+
+                            foreach (var item in inv.GetInsideWorldObjects())
+                            {
+                                if (hash.Contains(item.GetGroup().id))
+                                {
+                                    supplyItemCount++;
+                                }
+                            }
+                        }
+                    }
+                    {
+                        var gd = le.GetDemandGroups();
+                        if (gd != null && gd.Count != 0)
+                        {
+                            demandInventoryCount++;
+                            logisticsRelated = true;
+
+                            if (GetInventoryCapacity != null)
+                            {
+                                demandCapacity += GetInventoryCapacity(inv);
+                            }
+                            else
+                            {
+                                demandCapacity += inv.GetSize();
+                            }
+
+                            var hash = new HashSet<string>(gd.Select(v => v.id));
+
+                            foreach (var item in inv.GetInsideWorldObjects())
+                            {
+                                if (hash.Contains(item.GetGroup().id))
+                                {
+                                    demandItemCount++;
+                                }
+                            }
+                        }
+                    }
+                    if (logisticsRelated)
+                    {
+                        logisticsInventoryCount++;
+                    }
+                }
+            }
+
+            var lm = Managers.GetManager<LogisticManager>();
+            var alltasks = lm.GetAllCurrentTasks();
+            var logisticsTaskCount = alltasks.Count;
+            var logisticsTaskUnattributed = 0;
+            var logisticsTaskToSupply = 0;
+            var logisticsTaskToDemand = 0;
+            // var logisticsTaskDone = 0;
+            foreach (var lt in alltasks)
+            {
+                switch (lt.Value.GetTaskState())
+                {
+                    case LogisticData.TaskState.NotAttributed: {
+                            logisticsTaskUnattributed++;
+                            break;
+                        }
+                    case LogisticData.TaskState.ToSupply:
+                        {
+                            logisticsTaskToSupply++;
+                            break;
+                        }
+                    case LogisticData.TaskState.ToDemand:
+                        {
+                            logisticsTaskToDemand++;
+                            break;
+                        }
+                        /*
+                    case LogisticData.TaskState.Done:
+                        {
+                            logisticsTaskDone++;
+                            break;
+                        }
+                        */
+                }
+            }
+
+            addLine(string.Format("<margin=1em>Total Objects: <color=#00FF00>{0:#,##0}</color>", totalWorldObjects));
+            addLine(string.Format("<margin=1em>   Scene Objects: <color=#00FF00>{0:#,##0}</color>", sceneWorldObjects));
+            addLine(string.Format("<margin=1em>      Placed Items: <color=#00FF00>{0:#,##0}</color>", placedSceneItems));
+            addLine(string.Format("<margin=1em>      Have inventory: <color=#00FF00>{0:#,##0}</color>", sceneWorldObjectsInventory));
+            addLine(string.Format("<margin=1em>   Player Objects: <color=#00FF00>{0:#,##0}</color>", playerWorldObjects));
+            addLine(string.Format("<margin=1em>      Structures: <color=#00FF00>{0:#,##0}</color>", playerStructures));
+            addLine(string.Format("<margin=1em>      Placed Items: <color=#00FF00>{0:#,##0}</color>", playerPlacedItems));
+            addLine(string.Format("<margin=1em>      Have inventory: <color=#00FF00>{0:#,##0}</color>", playerWorldObjectsInventory));
+            addLine(string.Format("<margin=1em>Total Inventories: <color=#00FF00>{0:#,##0}</color>", totalInventories));
+            addLine(string.Format("<margin=1em>   Scene Inventories: <color=#00FF00>{0:#,##0}</color>", sceneInventories));
+            addLine(string.Format("<margin=1em>   Player Inventories: <color=#00FF00>{0:#,##0}</color>", playerInventories));
+            addLine(string.Format("<margin=1em>      Items inside: <color=#00FF00>{0:#,##0}</color>", totalItemsInInventory));
+            addLine(string.Format("<margin=1em>      Capacity: <color=#00FF00>{0:#,##0}</color>", totalInventoryCapacity));
+            if (totalInventoryCapacity > 0)
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>{0:#,##0.##} %</color>", totalItemsInInventory * 100d / totalInventoryCapacity));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>Logistics: <color=#00FF00>{0:#,##0}</color> inventories", logisticsInventoryCount));
+            addLine(string.Format("<margin=1em>   Supply: <color=#00FF00>{0:#,##0}</color>", supplyInventoryCount));
+            addLine(string.Format("<margin=1em>      Items: <color=#00FF00>{0:#,##0}</color>", supplyItemCount));
+            addLine(string.Format("<margin=1em>      Capacity: <color=#00FF00>{0:#,##0}</color>", supplyCapacity));
+            addLine(string.Format("<margin=1em>      Free: <color=#00FF00>{0:#,##0}</color>", supplyCapacity - supplyItemCount));
+            if (supplyCapacity > 0)
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>{0:#,##0.##} %</color>", supplyItemCount * 100d / supplyCapacity));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>   Demand: <color=#00FF00>{0:#,##0}</color>", demandInventoryCount));
+            addLine(string.Format("<margin=1em>      Items: <color=#00FF00>{0:#,##0}</color>", demandItemCount));
+            addLine(string.Format("<margin=1em>      Capacity: <color=#00FF00>{0:#,##0}</color>", demandCapacity));
+            addLine(string.Format("<margin=1em>      Free: <color=#00FF00>{0:#,##0}</color>", demandCapacity - demandItemCount));
+            if (demandCapacity > 0)
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>{0:#,##0.##} %</color>", demandItemCount * 100d / demandCapacity));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>      Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>   Drones: <color=#00FF00>{0:#,##0}</color>", drones));
+            addLine(string.Format("<margin=1em>      Active: <color=#00FF00>{0:#,##0}</color>", dronesActive));
+            if (drones > 0)
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>{0:#,##0.##} %</color>", dronesActive * 100d / drones));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>      Items Carried: <color=#00FF00>{0:#,##0}</color>", dronesCarrying));
+            if (dronesActive > 0)
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>{0:#,##0.##} %</color>", dronesCarrying * 100d / dronesActive));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>   Tasks: <color=#00FF00>{0:#,##0}</color>", logisticsTaskCount));
+            addLine(string.Format("<margin=1em>      Not attributed: <color=#00FF00>{0:#,##0}</color>", logisticsTaskUnattributed));
+            if (logisticsTaskCount > 0)
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>{0:#,##0} %</color>", logisticsTaskUnattributed * 100d / logisticsTaskCount));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>      To Supply: <color=#00FF00>{0:#,##0}</color>", logisticsTaskToSupply));
+            if (logisticsTaskCount > 0)
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>{0:#,##0} %</color>", logisticsTaskToSupply * 100d / logisticsTaskCount));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>N/A</color>"));
+            }
+            addLine(string.Format("<margin=1em>      To Demand: <color=#00FF00>{0:#,##0}</color>", logisticsTaskToDemand));
+            if (logisticsTaskCount > 0)
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>{0:#,##0} %</color>", logisticsTaskToDemand * 100d / logisticsTaskCount));
+            }
+            else
+            {
+                addLine(string.Format("<margin=1em>         Utilization: <color=#00FF00>N/A</color>"));
+            }
+        }
+
+        [Command("/set-outside-grower-delay", "Sets the outside growers' progress delay in seconds.")]
+        public void SetOutsideGrowerDelay(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Sets the outside growers' progress delay in seconds.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/set-outside-grower-delay seconds</color> - Set the progress delay in seconds (fractions allowed)");
+                addLine("<margin=1em>Current outside growers' delay: <color=#00FF00>" + string.Format("{0:#,##0.00} s", outsideGrowerDelay));
+            }
+            else
+            {
+                outsideGrowerDelay = float.Parse(args[1], CultureInfo.InvariantCulture);
+
+                addLine("<margin=1em>Outside growers' delay progress delay updated. Now at <color=#00FF00>" + string.Format("{0:#,##0.00} s", outsideGrowerDelay));
+
+                FieldInfo ___updeteInterval = AccessTools.Field(typeof(MachineOutsideGrower), "updateInterval");
+
+                foreach (var wo in WorldObjectsHandler.GetConstructedWorldObjects())
+                {
+                    var go = wo.GetGameObject();
+                    if (go != null)
+                    {
+                        var platform = go.GetComponent<MachineOutsideGrower>();
+                        if (platform != null)
+                        {
+                            ___updeteInterval.SetValue(platform, outsideGrowerDelay);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Command("/logistics-item-stats", "Display statistics about a particular item type in the logistics system.")]
+        public void LogisticItemStats(List<string> args)
+        {
+            if (args.Count != 2)
+            {
+                addLine("<margin=1em>Display statistics about a particular item type in the logistics system.");
+                addLine("<margin=1em>Usage:");
+                addLine("<margin=2em><color=#FFFF00>/logistics-item-stats item-id</color> - Display the statistics for the item");
+            }
+            else
+            {
+                var gr = FindGroup(args[1]);
+                if (gr == null)
+                {
+                    DidYouMean(args[1], false, true);
+                }
+                else
+                {
+                    var supplyInventoryCount = 0;
+                    var supplyItemCount = 0;
+                    var supplyCapacity = 0;
+                    var supplyFree = 0;
+                    var demandInventoryCount = 0;
+                    var demandItemCount = 0;
+                    var demandCapacity = 0;
+                    var demandFree = 0;
+
+                    foreach (var inv in InventoriesHandler.GetAllInventories())
+                    {
+                        var le = inv.GetLogisticEntity();
+                        if (le != null)
+                        {
+                            {
+                                var sup = le.GetSupplyGroups();
+                                if (sup != null 
+                                    && sup.Any(g => g == gr))
+                                {
+                                    supplyInventoryCount++;
+
+                                    supplyItemCount += inv.GetInsideWorldObjects()
+                                        .Where(g => g.GetGroup() == gr).Count();
+
+                                    var cap = 0;
+                                    if (GetInventoryCapacity != null)
+                                    {
+                                        cap = GetInventoryCapacity(inv);
+                                    }
+                                    else
+                                    {
+                                        cap = inv.GetSize();
+                                    }
+                                    supplyFree += Math.Max(0, cap - inv.GetInsideWorldObjects().Count);
+                                    supplyCapacity += cap;
+                                }
+                            }
+                            {
+                                var dem = le.GetDemandGroups();
+                                if (dem != null 
+                                    && dem.Any(g => g == gr))
+                                {
+                                    demandInventoryCount++;
+                                    demandItemCount += inv.GetInsideWorldObjects()
+                                        .Where(g => g.GetGroup() == gr).Count();
+
+                                    var cap = 0;
+                                    if (GetInventoryCapacity != null)
+                                    {
+                                        cap = GetInventoryCapacity(inv);
+                                    }
+                                    else
+                                    {
+                                        cap = inv.GetSize();
+                                    }
+                                    demandFree += Math.Max(0, cap - inv.GetInsideWorldObjects().Count);
+                                    demandCapacity += cap;
+                                }
+                            }
+                        }
+                    }
+
+                    var lm = Managers.GetManager<LogisticManager>();
+                    var alltasks = lm.GetAllCurrentTasks();
+
+                    var tasks = alltasks.Count;
+                    var unassigned = 0;
+                    var tosupply = 0;
+                    var todemand = 0;
+
+                    foreach (var lt in alltasks)
+                    {
+                        var wo = lt.Value.GetWorldObjectToMove();
+                        if (wo != null)
+                        {
+                            if (wo.GetGroup() == gr)
+                            {
+                                switch (lt.Value.GetTaskState())
+                                {
+                                    case LogisticData.TaskState.NotAttributed:
+                                        {
+                                            unassigned++;
+                                            break;
+                                        }
+                                    case LogisticData.TaskState.ToSupply:
+                                        {
+                                            tosupply++;
+                                            break;
+                                        }
+                                    case LogisticData.TaskState.ToDemand:
+                                        {
+                                            todemand++;
+                                            break;
+                                        }
+
+                                }
+                            }
+                        }
+                    }
+                    var grtask = unassigned + tosupply + todemand;
+
+                    addLine("<margin=1em><b>ID:</b> <color=#00FF00>" + gr.id);
+                    addLine("<margin=1em><b>Name:</b> <color=#00FF00>" + Readable.GetGroupName(gr));
+                    addLine("<margin=1em><b>Description:</b> <color=#00FF00>" + Readable.GetGroupDescription(gr));
+                    addLine("<margin=1em><b>Logistics Info:</b>");
+                    addLine(string.Format("<margin=1em>   Supply: {0:#,##0} inventories", supplyInventoryCount));
+                    addLine(string.Format("<margin=1em>      Items: {0:#,##0}", supplyItemCount));
+                    addLine(string.Format("<margin=1em>      Capacity: {0:#,##0}", supplyCapacity));
+                    addLine(string.Format("<margin=1em>      Free: {0:#,##0}", supplyFree));
+                    if (supplyCapacity > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Utilization: {0:#,##0.##} %", supplyItemCount * 100d / supplyCapacity));
+                    }
+                    addLine(string.Format("<margin=1em>   Demand: {0:#,##0} inventories", demandInventoryCount));
+                    addLine(string.Format("<margin=1em>      Items: {0:#,##0}", demandItemCount));
+                    addLine(string.Format("<margin=1em>      Capacity: {0:#,##0}", demandCapacity));
+                    addLine(string.Format("<margin=1em>      Free: {0:#,##0}", demandFree));
+                    if (demandCapacity > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Utilization: {0:#,##0.##} %", demandItemCount * 100d / demandCapacity));
+                    }
+                    addLine(string.Format("<margin=1em>   Tasks: {0:#,##0} total", tasks));
+                    addLine(string.Format("<margin=1em>      Items: {0:#,##0}", grtask));
+                    if (tasks > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Usage: {0:#,##0.##} %", grtask * 100d / tasks));
+                    }
+                    addLine(string.Format("<margin=1em>      Unassigned: {0:#,##0}", unassigned));
+                    if (grtask > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Usage: {0:#,##0.##} %", unassigned * 100d / grtask));
+                    }
+                    addLine(string.Format("<margin=1em>      To Supply: {0:#,##0}", tosupply));
+                    if (grtask > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Usage: {0:#,##0.##} %", tosupply * 100d / grtask));
+                    }
+                    addLine(string.Format("<margin=1em>      To Demand: {0:#,##0}", todemand));
+                    if (grtask > 0)
+                    {
+                        addLine(string.Format("<margin=1em>         Usage: {0:#,##0.##} %", todemand * 100d / grtask));
+                    }
+
+                }
+            }
+        }
+
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineOutsideGrower), nameof(MachineOutsideGrower.SetGrowerInventory))]
+        static void MachineOutsideGrower_SetGrowerInventory(ref float ___updateInterval)
+        {
+            ___updateInterval = outsideGrowerDelay;
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(Intro), "Start")]
+        static void FontWorkaround()
+        {
+            if (fontAsset == null)
+            {
+                foreach (LocalizedText ltext in FindObjectsByType<LocalizedText>(FindObjectsSortMode.None))
+                {
+                    if (ltext.textId == "Newsletter_Button")
+                    {
+                        fontAsset = ltext.GetComponent<TMP_Text>().font;
+                        break;
+                    }
+                }
+            }
+        }
+
         // oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
 
-        void Colorize(List<string> list, string color)
+            void Colorize(List<string> list, string color)
         {
             for (int i = 0; i < list.Count; i++)
             {
@@ -2256,7 +3443,7 @@ namespace FeatCommandConsole
             List<string> result = new();
             foreach (var text in texts)
             {
-                if (text.Contains(userText))
+                if (text.ToLower(CultureInfo.InvariantCulture).Contains(userText))
                 {
                     result.Add(text);
                 }

@@ -2,6 +2,8 @@
 using HarmonyLib;
 using SpaceCraft;
 using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,7 +27,7 @@ namespace FeatMultiplayer
             var background = new GameObject("Multiplayer_Notification_Background");
             background.transform.SetParent(panel.transform, false);
             var img = background.AddComponent<Image>();
-            img.color = new Color(0.5f, 0, 0, 0.95f);
+            img.color = new Color(0.5f, 0, 0, 0.98f);
 
             var text = new GameObject("Multiplayer_Notification_Text");
             text.transform.SetParent(background.transform, false);
@@ -66,6 +68,113 @@ namespace FeatMultiplayer
             LogInfo("SlowdownConsumption: " + slowdownConsumption.Value);
 
             ResetGaugeConsumptions();
+        }
+    }
+
+    internal class Telemetry
+    {
+        readonly string name;
+
+        Dictionary<string, long> dataPerType = new();
+
+        float lastTime;
+
+        internal Telemetry(string name)
+        {
+            this.name = name;
+            this.lastTime = Time.realtimeSinceStartup;
+        }
+
+        internal void Add(string key, long value) 
+        { 
+            lock (dataPerType)
+            {
+                dataPerType.TryGetValue(key, out var v);
+                dataPerType[key] = v + value;
+            }
+        }
+
+        internal void LogAndReset(Action<string> logPrintln)
+        {
+            Dictionary<string, long> dict = null;
+            lock (dataPerType)
+            {
+                dict = this.dataPerType;
+                this.dataPerType = new();
+            }
+
+            var t0 = lastTime;
+            lastTime = Time.realtimeSinceStartup;
+            var dt = lastTime - t0;
+
+            List<string> keys = new(dict.Keys);
+            if (keys.Count > 0)
+            {
+                keys.Sort();
+                var mx = keys.Select(k => k.Length).Max() + 3;
+
+                var totalBytes = 0L;
+                logPrintln(name + " Telemetry");
+                foreach (string key in keys)
+                {
+                    var v = dict[key];
+
+                    logPrintln(string.Format("  {0} - {1,15:#,##0} bytes ~ {2,15:#,##0.00} kb/s",
+                        key.PadRight(mx), v, v / 1024f / dt    
+                    ));
+
+                    totalBytes += v;
+                }
+                logPrintln("  ----");
+                logPrintln(string.Format("  {0} - {1,15:#,##0} bytes ~ {2,15:#,##0.00} kb/s",
+                        "Total".PadRight(mx), totalBytes, totalBytes / 1024f / dt
+                ));
+            }
+        }
+
+        
+    }
+
+    /// <summary>
+    /// Remembers a coroutine IEnumerator and stops it.
+    /// </summary>
+    internal class CoroutineRunner : MonoBehaviour
+    {
+        IEnumerator enumerator;
+
+        void Stop()
+        {
+            if (enumerator != null)
+            {
+                StopCoroutine(enumerator);
+            }
+            enumerator = null;
+        }
+
+        void Start(IEnumerator coroutineEnum)
+        {
+            enumerator = coroutineEnum ?? throw new NullReferenceException(nameof(CoroutineRunner) + "::" + nameof(Start) + " " + nameof(coroutineEnum) + " is null");
+            StartCoroutine(coroutineEnum);
+        }
+
+        /// <summary>
+        /// Adds a CoroutineRunner to the parent and starts the given coroutine.
+        /// </summary>
+        /// <param name="parent"></param>
+        /// <param name="coroutineEnum"></param>
+        internal static void StartOn(MonoBehaviour parent, IEnumerator coroutineEnum)
+        {
+            var cr = parent.GetComponent<CoroutineRunner>() ?? parent.gameObject.AddComponent<CoroutineRunner>();
+            cr.Start(coroutineEnum);
+        }
+
+        /// <summary>
+        /// Stops the CorotuineRunner on the given parent.
+        /// </summary>
+        /// <param name="parent"></param>
+        internal static void StopOn(MonoBehaviour parent)
+        {
+            parent.GetComponent<CoroutineRunner>()?.Stop();
         }
     }
 }

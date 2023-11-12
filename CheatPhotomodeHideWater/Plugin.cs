@@ -5,9 +5,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-namespace UIPhotomodeHideWater
+namespace CheatPhotomodeHideWater
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.uiphotomodehidewater", "(Cheat) Hide Water in Photomode", "1.0.0.5")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.uiphotomodehidewater", "(Cheat) Hide Water in Photomode", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
 
@@ -31,7 +31,7 @@ namespace UIPhotomodeHideWater
                     gameObject2.SetActive(active);
                 }
 
-                foreach (GameObject gameObject2 in FindObjectsOfType<GameObject>(true))
+                foreach (GameObject gameObject2 in FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 {
                     if (gameObject2.name == "Water")
                     {

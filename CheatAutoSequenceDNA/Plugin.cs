@@ -14,7 +14,7 @@ using System.Reflection;
 
 namespace CheatAutoSequenceDNA
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.cheatautosequencedna", "(Cheat) Auto Sequence DNA", "1.0.0.5")]
+    [BepInPlugin("akarnokd.theplanetcraftermods.cheatautosequencedna", "(Cheat) Auto Sequence DNA", PluginInfo.PLUGIN_VERSION)]
     [BepInDependency(modFeatMultiplayerGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -34,6 +34,8 @@ namespace CheatAutoSequenceDNA
 
         static ConfigEntry<string> incubatorSilkId;
 
+        static ConfigEntry<string> incubatorBacteriaId;
+
         static ConfigEntry<bool> sequencerEnabled;
 
         static ConfigEntry<string> sequencerMutagenId;
@@ -44,9 +46,17 @@ namespace CheatAutoSequenceDNA
 
         static ConfigEntry<string> sequencerTreeSeedId;
 
+        static ConfigEntry<string> sequencerPhytoplanktonId;
+
+        static ConfigEntry<string> sequencerFertilizerId;
+
         static ConfigEntry<string> incubatorPhytoplanktonId;
 
         static ConfigEntry<string> incubatorFishId;
+
+        static ConfigEntry<string> incubatorFrogEggId;
+
+        static ConfigEntry<int> range;
 
         static ConfigEntry<bool> debugMode;
 
@@ -74,13 +84,18 @@ namespace CheatAutoSequenceDNA
             incubatorSilkId = Config.Bind("Incubator", "Silk", "*Silk", "The name of the container(s) where to deposit the spawned silk worms.");
             incubatorPhytoplanktonId = Config.Bind("Incubator", "Phytoplankton", "*Phytoplankton", "The name of the container(s) where to look for Phytoplankton.");
             incubatorFishId = Config.Bind("Incubator", "Fish", "*Fish", "The name of the container(s) where to deposit the spawned fish.");
+            incubatorFrogEggId = Config.Bind("Incubator", "FrogEgg", "*FrogEgg", "The name of the container(s) where to to look for frog eggs.");
+            incubatorBacteriaId = Config.Bind("Incubator", "Bacteria", "*Bacteria", "The name of the container(s) where to to look for bacteria samples.");
 
             sequencerMutagenId = Config.Bind("Sequencer", "Mutagen", "*Mutagen", "The name of the container(s) where to look for fertilizer.");
             sequencerTreeRootId = Config.Bind("Sequencer", "TreeRoot", "*TreeRoot", "The name of the container(s) where to look for Tree Root.");
             sequencerFlowerSeedId = Config.Bind("Sequencer", "FlowerSeed", "*FlowerSeed", "The name of the container(s) where to look for Flower Seeds (all kinds).");
             sequencerTreeSeedId = Config.Bind("Sequencer", "TreeSeed", "*TreeSeed", "The name of the container(s) where to deposit the spawned tree seeds.");
+            sequencerPhytoplanktonId = Config.Bind("Sequencer", "Phytoplankton", "*Phytoplankton", "The name of the container(s) where to look for Phytoplankton.");
+            sequencerFertilizerId = Config.Bind("Sequencer", "Fertilizer", "*Fertilizer", "The name of the container(s) where to look for fertilizer.");
 
             debugMode = Config.Bind("General", "DebugMode", false, "Enable debugging with detailed logs (chatty!).");
+            range = Config.Bind("General", "Range", 30, "The maximum distance to look for the named containers. 0 means unlimited.");
 
             if (Chainloader.PluginInfos.TryGetValue(modFeatMultiplayerGuid, out var pi))
             {
@@ -95,7 +110,8 @@ namespace CheatAutoSequenceDNA
             uiWindowGeneticsWorldObject = AccessTools.Field(typeof(UiWindowGenetics), "worldObject");
             uiWindowGeneticsUpdateUiCoroutine = AccessTools.Field(typeof(UiWindowGenetics), "updateUiCoroutine");
 
-            Harmony.CreateAndPatchAll(typeof(Plugin));
+            var harmony = Harmony.CreateAndPatchAll(typeof(Plugin));
+            LibCommon.SaveModInfo.Patch(harmony);
 
             StartCoroutine(SequencerCheckLoop(2.5f));
         }
@@ -178,7 +194,9 @@ namespace CheatAutoSequenceDNA
                 { "Bee", incubatorBeeId.Value },
                 { "Silk", incubatorSilkId.Value },
                 { "Phytoplankton", incubatorPhytoplanktonId.Value },
-                { "Fish", incubatorFishId.Value }
+                { "Fish", incubatorFishId.Value },
+                { "FrogEgg", incubatorFrogEggId.Value },
+                { "Bacteria", incubatorBacteriaId.Value },
             };
 
             // List of world objects per category (containers, machines)
@@ -189,7 +207,7 @@ namespace CheatAutoSequenceDNA
             {
                 var gid = wo.GetGroup().GetId();
                 var txt = wo.GetText() ?? "";
-                if (gid == "Container1" || gid == "Container2")
+                if (gid == "Container1" || gid == "Container2" || gid == "Container3")
                 {
                     foreach (var kv in keywordMapping)
                     {
@@ -207,6 +225,16 @@ namespace CheatAutoSequenceDNA
                 }
             }
 
+            log("Find the maximum recipe size");
+            var minInventoryCapacity = 0;
+            foreach (var gi in GroupsHandler.GetGroupsItem())
+            {
+                if (gi.CanBeCraftedIn(CraftableIn.CraftIncubatorT1))
+                {
+                    minInventoryCapacity = Math.Max(minInventoryCapacity, gi.GetRecipe()?.GetIngredientsGroupInRecipe()?.Count ?? 0);
+                }
+            }
+
             if (itemCategories.TryGetValue("Incubator", out var incubatorList))
             {
                 foreach (var incubator in incubatorList)
@@ -214,6 +242,13 @@ namespace CheatAutoSequenceDNA
                     log("  Incubator: " + DebugWorldObject(incubator));
                     // Try to deposit finished products first
                     Inventory incubatorInv = InventoriesHandler.GetInventoryById(incubator.GetLinkedInventoryId());
+
+                    // Fix incubators that don't have enough slots for all ingredients.
+                    if (incubatorInv.GetSize() < minInventoryCapacity)
+                    {
+                        log("    Updated inventory capacity from " + incubatorInv.GetSize() + " to " + minInventoryCapacity);
+                        incubatorInv.SetSize(minInventoryCapacity);
+                    }
 
                     var currentItems = incubatorInv.GetInsideWorldObjects();
                     if (currentItems.Count > 0 && incubator.GetGrowth() == 0)
@@ -240,6 +275,10 @@ namespace CheatAutoSequenceDNA
                             {
                                 TryDeposit(incubatorInv, item, itemCategories, "Fish");
                             }
+                            if (gid.StartsWith("Frog") && gid.EndsWith("Eggs"))
+                            {
+                                TryDeposit(incubatorInv, item, itemCategories, "FrogEgg");
+                            }
                         }
                     }
 
@@ -247,16 +286,26 @@ namespace CheatAutoSequenceDNA
                     {
                         log("    Picking Recipe");
 
-                        var spawnTarget = PickRecipe(DataConfig.CraftableIn.CraftIncubatorT1);
-
-                        if (spawnTarget != null)
+                        var candidates = GetCandidates(DataConfig.CraftableIn.CraftIncubatorT1);
+                        Shuffle(candidates);
+                        var found = false;
+                        foreach (var spawnTarget in candidates)
                         {
-                            StartNewResearch(spawnTarget, currentItems,
-                                itemCategories, incubatorInv, incubator);
+                            if (StartNewResearch(spawnTarget, currentItems,
+                                itemCategories, incubatorInv, incubator))
+                            {
+                                found = true;
+                                break;
+                            }
                         }
-                        else
+
+                        if (candidates.Count == 0)
                         {
                             log("    Sequencing: No applicable DNA sequence found");
+                        }
+                        if (!found)
+                        {
+                            log("    Sequencing: No complete set of ingredients for any DNA sequence found");
                         }
 
                     }
@@ -334,7 +383,7 @@ namespace CheatAutoSequenceDNA
                         ingredientSources = new();
                         sourcesPerCategory[cat] = ingredientSources;
                     }
-                    FindIngredientsIn(m.id, itemCategories, cat, ingredientSources);
+                    FindIngredientsIn(m.id, itemCategories, cat, ingredientSources, machine.GetPosition());
                 }
 
                 foreach (var m in missing)
@@ -441,6 +490,14 @@ namespace CheatAutoSequenceDNA
             {
                 return "Phytoplankton";
             }
+            else if (ingredientGroupId.StartsWith("Frog") && ingredientGroupId.EndsWith("Eggs"))
+            {
+                return "FrogEgg";
+            }
+            else if (ingredientGroupId.StartsWith("Bacteria1"))
+            {
+                return "Bacteria";
+            }
             return "";
         }
 
@@ -454,6 +511,8 @@ namespace CheatAutoSequenceDNA
                 { "TreeRoot", sequencerTreeRootId.Value },
                 { "FlowerSeed", sequencerFlowerSeedId.Value },
                 { "TreeSeed", sequencerTreeSeedId.Value },
+                { "Phytoplankton", sequencerPhytoplanktonId.Value },
+                { "Fertilizer", sequencerFertilizerId.Value },
             };
 
             // List of world objects per category (containers, machines)
@@ -464,7 +523,7 @@ namespace CheatAutoSequenceDNA
             {
                 var gid = wo.GetGroup().GetId();
                 var txt = wo.GetText() ?? "";
-                if (gid == "Container1" || gid == "Container2")
+                if (gid == "Container1" || gid == "Container2" || gid == "Container3")
                 {
                     foreach (var kv in keywordMapping)
                     {
@@ -503,6 +562,10 @@ namespace CheatAutoSequenceDNA
                             {
                                 TryDeposit(sequencerInv, item, itemCategories, "TreeSeed");
                             }
+                            if (gid.StartsWith("Seed"))
+                            {
+                                TryDeposit(sequencerInv, item, itemCategories, "FlowerSeed");
+                            }
                         }
                     }
 
@@ -512,14 +575,7 @@ namespace CheatAutoSequenceDNA
 
                         if (candidates.Count != 0)
                         {
-                            for (var i = candidates.Count; i > 1; i--)
-                            {
-                                int j = UnityEngine.Random.Range(0, i);
-                                int k = i - 1;
-                                var tmp = candidates[k];
-                                candidates[k] = candidates[j];
-                                candidates[j] = tmp;
-                            }
+                            Shuffle(candidates);
 
                             bool found = false;
                             foreach (var spawnTarget in candidates)
@@ -666,11 +722,14 @@ namespace CheatAutoSequenceDNA
                 foreach (var container in containers)
                 {
                     Inventory inv = InventoriesHandler.GetInventoryById(container.GetLinkedInventoryId());
-                    if (inv.AddItem(item))
+                    if (inv != null)
                     {
-                        log("        Into      : " + DebugWorldObject(container));
-                        source.RemoveItem(item, false);
-                        return;
+                        if (inv.AddItem(item))
+                        {
+                            log("        Into      : " + DebugWorldObject(container));
+                            source.RemoveItem(item, false);
+                            return;
+                        }
                     }
                 }
                 log("        Into      : Failed - all target containers are full");
@@ -686,28 +745,52 @@ namespace CheatAutoSequenceDNA
             internal WorldObject wo;
         }
         
-        void FindIngredientsIn(string gid, Dictionary<string, List<WorldObject>> itemCategories, string itemKey, List<IngredientSource> result)
+        void FindIngredientsIn(string gid, 
+            Dictionary<string, List<WorldObject>> itemCategories, 
+            string itemKey, 
+            List<IngredientSource> result,
+            Vector3 incubatorDistance)
         {
+            var maxDistance = range.Value;
             if (itemCategories.TryGetValue(itemKey, out var containers))
             {
                 foreach (var container in containers)
                 {
+                    if (maxDistance > 0 && Vector3.Distance(container.GetPosition(), incubatorDistance) > maxDistance)
+                    {
+                        continue;
+                    }
                     Inventory inv = InventoriesHandler.GetInventoryById(container.GetLinkedInventoryId());
 
-                    foreach (var wo in inv.GetInsideWorldObjects())
+                    if (inv != null)
                     {
-                        var woGid = wo.GetGroup().GetId();
-                        if (woGid == gid)
+                        foreach (var wo in inv.GetInsideWorldObjects())
                         {
-                            result.Add(new IngredientSource
+                            var woGid = wo.GetGroup().GetId();
+                            if (woGid == gid)
                             {
-                                ingredient = woGid,
-                                source = inv,
-                                wo = wo
-                            });
+                                result.Add(new IngredientSource
+                                {
+                                    ingredient = woGid,
+                                    source = inv,
+                                    wo = wo
+                                });
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        static void Shuffle<T>(IList<T> list)
+        {
+            for (int n = list.Count - 1; n > 0; n--)
+            {
+                var k = UnityEngine.Random.Range(0, n + 1);
+
+                var t = list[k];
+                list[k] = list[n];
+                list[n] = t;
             }
         }
     }
