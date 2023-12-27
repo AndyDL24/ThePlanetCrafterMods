@@ -21,6 +21,7 @@ namespace FeatMultiplayer
         static ConfigEntry<int> smallSyncDelay;
         static ConfigEntry<bool> streamerMode;
         static ConfigEntry<int> networkTelemetry;
+        static ConfigEntry<bool> achievements;
 
         static ConfigEntry<bool> hostMode;
         static ConfigEntry<bool> useUPnP;
@@ -81,6 +82,7 @@ namespace FeatMultiplayer
             emoteKey = Config.Bind("General", "EmoteKey", "G", "The key to bring up the emote wheel.");
             playerLocatorKey = Config.Bind("General", "PlayerLocatorKey", "H", "Toggle the overlay that shows the other players' location");
             networkTelemetry = Config.Bind("General", "NetworkTelemetry", 0, "Time in seconds to take a network telemetry snapshot. 0 means disabled.");
+            achievements = Config.Bind("General", "Achievements", false, "Enable obtaining achievements during multiplayer (prevents surprises when joining an advanced world).");
 
             hostMode = Config.Bind("Host", "Host", false, "If true, loading a save will also host it as a multiplayer game.");
             useUPnP = Config.Bind("Host", "UseUPnP", false, "If behind NAT, use UPnP to manually map the HostPort to the external IP address?");
@@ -103,6 +105,7 @@ namespace FeatMultiplayer
 
             Assembly me = Assembly.GetExecutingAssembly();
             resourcesPath = Path.GetDirectoryName(me.Location);
+            theLogger.LogInfo("Resource Dir: " + resourcesPath + "/" + OfDir());
 
             astronautFront = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Front.png"));
             astronautBack = LoadPNG(Path.Combine(resourcesPath, "Astronaut_Back.png"));
@@ -127,6 +130,9 @@ namespace FeatMultiplayer
             var harmony = Harmony.CreateAndPatchAll(typeof(Plugin));
             LibCommon.SaveModInfo.Patch(harmony);
             LibCommon.GameVersionCheck.Patch(harmony, "(Feat) Multiplayer - v" + PluginInfo.PLUGIN_VERSION);
+
+            theLogger.LogInfo("Game version is " + Application.version);
+            theLogger.LogInfo("Achievements are " + (achievements.Value ? "enabled" : "disabled"));
         }
 
         void OnDestroy()
