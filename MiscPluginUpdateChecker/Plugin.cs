@@ -1,4 +1,7 @@
-﻿using BepInEx;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
+using BepInEx;
 using SpaceCraft;
 using HarmonyLib;
 using UnityEngine;
@@ -12,6 +15,9 @@ using System.Threading.Tasks;
 using BepInEx.Bootstrap;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using System.IO;
+using System.Net.Cache;
+using System.Net;
 
 [assembly: InternalsVisibleTo("XTestPlugins")]
 namespace MiscPluginUpdateChecker
@@ -23,24 +29,27 @@ namespace MiscPluginUpdateChecker
         static ManualLogSource _logger;
 
         static ConfigEntry<bool> isEnabled;
-        static ConfigEntry<string> versionInfoRepository;
+        static ConfigEntry<string> versionInfoRepositoryTxt;
         static ConfigEntry<bool> bypassCache;
         static ConfigEntry<int> fontSize;
         static ConfigEntry<bool> debugMode;
 
-        private void Awake()
+        public void Awake()
         {
+            LibCommon.BepInExLoggerFix.ApplyFix();
+            
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
             _logger = Logger;
 
             isEnabled = Config.Bind("General", "Enabled", true, "Is the mod enabled?");
-            versionInfoRepository = Config.Bind("General", "VersionInfoRepository", Helpers.defaultVersionInfoRepository, "The URL from where to download an XML describing various known plugins and their latest versions.");
+            versionInfoRepositoryTxt = Config.Bind("General", "VersionInfoRepositoryTxt", defaultVersionInfoRepositoryTxt, "The URL from where to download an text file describing various known plugins and their latest versions.");
             bypassCache = Config.Bind("General", "BypassCache", false, "If true, this mod will try to bypass caching on the targeted URLs by appending an arbitrary query parameter");
             fontSize = Config.Bind("General", "FontSize", 16, "The font size");
             debugMode = Config.Bind("General", "DebugMode", false, "Enable detailed logging of the mod (chatty!)");
 
+            LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
 
@@ -54,13 +63,7 @@ namespace MiscPluginUpdateChecker
                 _logger.LogInfo(message);
             }
         }
-        static void LogWarning(object message)
-        {
-            if (debugMode.Value)
-            {
-                _logger.LogWarning(message);
-            }
-        }
+
         static void LogError(object message)
         {
             if (debugMode.Value)
@@ -71,13 +74,13 @@ namespace MiscPluginUpdateChecker
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Intro), "Start")]
-        static void Intro_Start(Intro __instance)
+        static void Intro_Start()
         {
             if (isEnabled.Value)
             {
                 pluginInfos = null;
 
-                var startUrl = versionInfoRepository.Value;
+                var startUrl = versionInfoRepositoryTxt.Value;
                 var bypass = bypassCache.Value;
 
                 var localPlugins = GetLocalPlugins();
@@ -94,7 +97,7 @@ namespace MiscPluginUpdateChecker
             }
         }
 
-        void Update()
+        public void Update()
         {
             var pis = pluginInfos;
             if (!cancelDownload.IsCancellationRequested)
@@ -126,7 +129,7 @@ namespace MiscPluginUpdateChecker
                         diff.gameObject.GetComponent<Text>().color = new Color(0.3f, 0.3f, 1f);
                         if (Mouse.current.leftButton.wasPressedThisFrame)
                         {
-                            Application.OpenURL(diff.remote.link);
+                            Application.OpenURL(versionInfoRepositoryTxt.Value.Replace("/version_info.txt",""));
                         }
                     }
                     else
@@ -148,7 +151,7 @@ namespace MiscPluginUpdateChecker
             }
         }
 
-        static void Destroy()
+        public void OnDestroy()
         {
             cancelDownload?.Cancel();
             pluginInfos = null;
@@ -160,8 +163,8 @@ namespace MiscPluginUpdateChecker
         static GameObject scrollUp;
         static GameObject scrollDown;
         static int scrollIndex;
-        static readonly List<PluginVersionDiff> scrollEntries = new();
-        static readonly List<GameObject> toHide = new();
+        static readonly List<PluginVersionDiff> scrollEntries = [];
+        static readonly List<GameObject> toHide = [];
 
         static void DisplayPluginDiffs(List<PluginVersionDiff> diffs)
         {
@@ -218,7 +221,6 @@ namespace MiscPluginUpdateChecker
 
 
             int w = Screen.width * 3 / 4;
-            int maxh = Screen.height * 3 / 4;
 
             int contentHeight = (list.Count * 3 + 2) * (fs + 5) + (fs + 10) + fs;
 
@@ -280,7 +282,7 @@ namespace MiscPluginUpdateChecker
                 y -= fs + 5;
                 CreateText(x, y, w, de.local.description, new Color(0.8f, 0.8f, 0.8f), fs);
                 y -= fs + 5;
-                CreateText(x, y, w, de.local.explicitVersion + " -> " + de.remote.version, new Color(0.5f, 1, 0.5f), fs);
+                CreateText(x, y, w, de.local.explicitVersion + " -> " + de.remote.Version, new Color(0.5f, 1, 0.5f), fs);
                 y -= fs + 5;
 
                 if (y < miny)
@@ -323,10 +325,12 @@ namespace MiscPluginUpdateChecker
             var result = new Dictionary<string, PluginEntry>();
             foreach (var pi in Chainloader.PluginInfos)
             {
-                var pe = new PluginEntry();
-                pe.guid = pi.Key;
-                pe.description = pi.Value.Metadata.Name;
-                pe.explicitVersion = pi.Value.Metadata.Version;
+                var pe = new PluginEntry
+                {
+                    guid = pi.Key,
+                    description = pi.Value.Metadata.Name,
+                    explicitVersion = pi.Value.Metadata.Version
+                };
 
                 result[pi.Key] = pe;
             }
@@ -337,16 +341,14 @@ namespace MiscPluginUpdateChecker
         {
             try
             {
-                var remotePluginInfos = Helpers.DownloadPluginInfos(
+                var remotePluginInfos = DownloadPluginInfos(
                     startUrl,
-                    o => LogInfo(o),
-                    o => LogWarning(o),
-                    o => LogError(o),
+                    LogInfo,
                     bypassCache
                 );
                 LogInfo("Comparing local and remote plugins");
 
-                List<PluginVersionDiff> diffs = new();
+                List<PluginVersionDiff> diffs = [];
 
                 foreach (var local in localPlugins.Values)
                 {
@@ -373,6 +375,115 @@ namespace MiscPluginUpdateChecker
                     LogError(ex);
                 }
             }
+        }
+
+        internal const string defaultVersionInfoRepositoryTxt = "https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/version_info.txt";
+
+        internal static Dictionary<string, PluginEntry> DownloadPluginInfos(
+            string startUrl,
+            Action<object> logInfo,
+            bool randomArgument)
+        {
+            logInfo("Download version_info.txt");
+
+            Dictionary<string, PluginEntry> plugins = [];
+
+            var request = WebRequest.Create(MaybeRandom(startUrl, randomArgument)).NoCache();
+
+            using var response = request.GetResponse();
+            using var stream = response.GetResponseStream();
+            using var reader = new StreamReader(stream);
+            string desc = "";
+
+            logInfo("Parsing version_info.txt");
+            for (; ; )
+            {
+                var line = reader.ReadLine();
+                if (line == null)
+                {
+                    break;
+                }
+                if (line.StartsWith("#"))
+                {
+                    desc = line[2..];
+                    continue;
+                }
+                var kv = line.Split('=');
+                if (kv.Length != 2)
+                {
+                    continue;
+                }
+
+                var pe = new PluginEntry
+                {
+                    guid = kv[0],
+                    description = desc,
+                    discoverVersion = new Version(kv[1])
+                };
+                logInfo("  -> " + pe.guid + " @ " + pe.discoverVersion);
+                plugins[pe.guid] = pe;
+            }
+
+            logInfo("Version discovery done");
+
+            return plugins;
+        }
+
+        static string MaybeRandom(string url, bool randomize)
+        {
+            if (randomize)
+            {
+                return url + "?v=" + DateTime.UtcNow.Ticks;
+            }
+            return url;
+        }
+    }
+
+    static class HelpersExt
+    {
+        internal static WebRequest NoCache(this WebRequest request)
+        {
+            request.CachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore);
+            request.Headers[HttpRequestHeader.CacheControl] = "no-cache";
+            return request;
+        }
+    }
+
+    internal class PluginEntry
+    {
+        internal string guid;
+        internal string description;
+        internal Version explicitVersion;
+        internal string discoverUrl;
+        internal Version discoverVersion;
+
+        internal Version Version
+        {
+            get
+            {
+                if (explicitVersion != null)
+                {
+                    return explicitVersion;
+                }
+                if (discoverVersion != null)
+                {
+                    return discoverVersion; ;
+                }
+                return null;
+            }
+        }
+
+        internal int CompareToVersion(Version other)
+        {
+            if (explicitVersion != null)
+            {
+                return explicitVersion.CompareTo(other);
+            }
+            if (discoverVersion != null)
+            {
+                return discoverVersion.CompareTo(other);
+            }
+            return 0;
         }
     }
 }

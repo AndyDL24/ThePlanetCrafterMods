@@ -1,6 +1,7 @@
-﻿using System;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
 using System.Collections.Generic;
-using System.Text;
 
 namespace LibCommon
 {
@@ -9,8 +10,8 @@ namespace LibCommon
     /// </summary>
     internal class StandardResourceSets
     {
-        internal static readonly string defaultOres = string.Join(",", new string[]
-        {
+        internal static readonly HashSet<string> defaultOreSet =
+        [
             "Cobalt",
             "Silicon",
             "Iron",
@@ -26,11 +27,21 @@ namespace LibCommon
             "Sulfur",
             "PulsarQuartz",
             "PulsarShard",
-            "Obsidian"
-        });
+            "Obsidian",
+            "SolarQuartz",
+            "MagnetarQuartz",
+            "BalzarQuartz", // it is misspelled in the game
+            "QuasarQuartz",
+            "Dolomite",
+            "Uraninite",
+            "Bauxite",
+            "CosmicQuartz"
+        ];
 
-        internal static readonly string defaultLarvae = string.Join(",", new string[]
-        {
+        internal static readonly string defaultOres = string.Join(",", defaultOreSet);
+
+        internal static readonly string defaultLarvae = string.Join(",",
+        [
             "LarvaeBase1",
             "LarvaeBase2",
             "LarvaeBase3",
@@ -43,10 +54,10 @@ namespace LibCommon
             "Butterfly17Larvae",
             "Butterfly18Larvae",
             "Butterfly19Larvae"
-        });
+        ]);
 
-        internal static readonly string defaultFish = string.Join(",", new string[]
-        {
+        internal static readonly string defaultFish = string.Join(",",
+        [
             "Fish1Eggs",
             "Fish2Eggs",
             "Fish3Eggs",
@@ -60,10 +71,10 @@ namespace LibCommon
             "Fish11Eggs",
             "Fish12Eggs",
             "Fish13Eggs",
-        });
+        ]);
 
-        internal static readonly string defaultFrogs = string.Join(",", new string[]
-        {
+        internal static readonly string defaultFrogs = string.Join(",",
+        [
             "Frog1Eggs",
             "Frog2Eggs",
             "Frog3Eggs",
@@ -76,6 +87,8 @@ namespace LibCommon
             "Frog10Eggs",
             "FrogGoldEggs",
             "Frog11Eggs",
-        });
+            "Frog12Eggs",
+            "Frog13Eggs"
+        ]);
     }
 }

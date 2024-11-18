@@ -1,46 +1,70 @@
-﻿using BepInEx;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
+using BepInEx;
 using SpaceCraft;
 using HarmonyLib;
 using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.InputSystem;
+using BepInEx.Bootstrap;
 
 namespace UILogisticSelectAll
 {
     [BepInPlugin("akarnokd.theplanetcraftermods.uilogisticselectall", "(UI) Logistic Select All", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency(modStorageBuffer, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
 
-        private void Awake()
+        const string modStorageBuffer = "valriz.theplanetcrafter.storagebuffer";
+
+        static bool modStorageBufferInstalled;
+
+        public void Awake()
         {
+            LibCommon.BepInExLoggerFix.ApplyFix();
+
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
+            if (Chainloader.PluginInfos.TryGetValue(modStorageBuffer, out _))
+            {
+                Logger.LogError("Mod " + modStorageBuffer + " found");
+                modStorageBufferInstalled = true;
 
+            }
+            else
+            {
+                Logger.LogInfo("Mod " + modStorageBuffer + " not found.");
+            }
+
+            LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(GroupSelector), "Start")]
-        static void GroupSelector_Start(GroupSelector __instance, List<Group> ___addedGroups)
+        static void GroupSelector_Start(GroupSelector __instance, List<Group> ____addedGroups)
         {
             var kw = __instance.gameObject.AddComponent<KeyboardWatcher>();
             kw.selector = __instance;
-            kw.addedGroups = ___addedGroups;
+            kw.addedGroups = ____addedGroups;
         }
 
         static bool suppressSanitizeAndUiUpdates;
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(LogisticEntity), "SanitizeGroups")]
-        static bool LogisticEntity_SanitizeGroups(List<Group> _groupsToPrioritize, List<Group> _groupsToRemoveFrom)
+        static bool LogisticEntity_SanitizeGroups(HashSet<Group> groupsToPrioritize, HashSet<Group> groupsToRemoveFrom)
         {
-            if (!suppressSanitizeAndUiUpdates)
+            if (!modStorageBufferInstalled)
             {
-                if (_groupsToPrioritize != null && _groupsToRemoveFrom != null)
+                if (!suppressSanitizeAndUiUpdates)
                 {
-                    var set = new HashSet<Group>(_groupsToPrioritize);
-                    _groupsToRemoveFrom.RemoveAll(set.Contains);
+                    if (groupsToPrioritize != null && groupsToRemoveFrom != null)
+                    {
+                        groupsToRemoveFrom.RemoveWhere(groupsToPrioritize.Contains);
+                    }
                 }
             }
             return false;
@@ -58,7 +82,7 @@ namespace UILogisticSelectAll
             internal GroupSelector selector;
             internal List<Group> addedGroups;
 
-            void Update()
+            public void Update()
             {
                 if (selector.listContainer.activeSelf 
                     && Keyboard.current[Key.A].wasPressedThisFrame 
@@ -69,13 +93,16 @@ namespace UILogisticSelectAll
                         Managers.GetManager<GlobalAudioHandler>().PlayUiSelectElement();
                         for (int i = 0; i < addedGroups.Count; i++)
                         {
-                            Group g = addedGroups[i];
+                            var g = addedGroups[i];
                             suppressSanitizeAndUiUpdates = i < addedGroups.Count - 1;
+                            if (!suppressSanitizeAndUiUpdates)
+                            {
+                                selector.groupDisplayer.SetGroupAndUpdateDisplay(g, greyed: false, showName: true);
+                            }
                             selector.groupSelectedEvent?.Invoke(g);
                         }
 
-                        selector.listContainer.SetActive(false);
-                        Managers.GetManager<DisplayersHandler>().GetGroupInfosDisplayer().Hide();
+                        selector.CloseList();
                     }
                     finally
                     {

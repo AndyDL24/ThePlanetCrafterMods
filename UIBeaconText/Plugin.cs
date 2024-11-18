@@ -1,29 +1,24 @@
-﻿using BepInEx;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
+using BepInEx;
 using SpaceCraft;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
-using System.Collections.Generic;
 using BepInEx.Configuration;
-using System;
-using BepInEx.Bootstrap;
 using UnityEngine.InputSystem;
-using System.Reflection;
 using BepInEx.Logging;
-using System.Linq;
-using System.Collections;
 using TMPro;
-using UnityEngine.UIElements;
+using Unity.Netcode;
+using System.Collections;
 
 namespace UIBeaconText
 {
     [BepInPlugin(modUiBeaconText, "(UI) Beacon Text", PluginInfo.PLUGIN_VERSION)]
-    [BepInDependency(modFeatMultiplayerGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         const string modUiBeaconText = "akarnokd.theplanetcraftermods.uibeacontext";
-        const string modFeatMultiplayerGuid = "akarnokd.theplanetcraftermods.featmultiplayer";
 
         static ConfigEntry<int> fontSize;
 
@@ -35,24 +30,32 @@ namespace UIBeaconText
 
         static ConfigEntry<string> displayModeToggle;
 
-        static ManualLogSource logger;
+        static ConfigEntry<bool> debugMode;
 
+        static ConfigEntry<string> fontName;
+
+        static ConfigEntry<bool> hideVanillaHexagon;
+
+        static ManualLogSource logger;
+        static Font font;
         static InputAction toggleAction;
 
-        private void Awake()
+
+        public void Awake()
         {
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
+            logger = Logger;
+
             fontSize = Config.Bind("General", "FontSize", 20, "The font size.");
-
-            displayMode = Config.Bind("General", "DisplayMode", 1, "Display: 0 - no text no distance, 1 - distance only, 2 - text only, 3 - distance + text.");
-
-            displayModeToggle = Config.Bind("General", "DisplayModeToggleKey", "B", "The toggle key for changing the display mode.");
-
+            displayMode = Config.Bind("General", "DisplayMode", 3, "Display: 0 - no text no distance, 1 - distance only, 2 - text only, 3 - distance + text.");
+            displayModeToggle = Config.Bind("General", "DisplayModeToggleKey", "B", "The toggle key for changing the display mode. Shift+<toggle key> to swap top-down. Ctrl+Shift+<toggle key> to toggle hexagon.");
             showDistanceOnTop = Config.Bind("General", "ShowDistanceOnTop", true, "Show the distance above the beacon hexagon if true, below if false");
-
-            hideVanillaLabel = Config.Bind("General", "HideVanillaLabel", false, "If true, the vanilla beacon text is hidden and replaced by this mod's label");
+            hideVanillaLabel = Config.Bind("General", "HideVanillaLabel", true, "If true, the vanilla beacon text is hidden and replaced by this mod's label");
+            debugMode = Config.Bind("General", "DebugMode", false, "Enable debug logging? Chatty!");
+            fontName = Config.Bind("General", "Font", "Arial.ttf", "The built-in font name, including its extesion.");
+            hideVanillaHexagon = Config.Bind("General", "HideVanillaHexagon", false, "If true, the vanilla hexagon is hidde. Toggle via Ctrl+Shift+<toggle key>.");
 
             if (!displayModeToggle.Value.StartsWith("<Keyboard>/"))
             {
@@ -61,21 +64,21 @@ namespace UIBeaconText
             toggleAction = new InputAction("DisplayModeToggleKey", binding: displayModeToggle.Value);
             toggleAction.Enable();
 
-            logger = Logger;
+            font = Resources.GetBuiltinResource<Font>(fontName.Value);
 
-            if (Chainloader.PluginInfos.TryGetValue(modFeatMultiplayerGuid, out var _))
-            {
-                Logger.LogInfo("Found " + modFeatMultiplayerGuid + ", beacon text updates will sync too, probably");
-            }
-            else
-            {
-                Logger.LogInfo("Not Found " + modFeatMultiplayerGuid);
-            }
-
+            LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
 
-        void Update()
+        static void Log(object message)
+        {
+            if (debugMode.Value)
+            {
+                logger.LogInfo(message);
+            }
+        }
+
+        public void Update()
         {
             var wh = Managers.GetManager<WindowsHandler>();
             if (wh == null)
@@ -94,9 +97,19 @@ namespace UIBeaconText
                     ?.GetPlayerInputDispatcher()
                     ?.IsPressingAccessibilityKey() ?? false;
 
-                if (accessPressed)
+                var shiftPressed = Keyboard.current[Key.LeftShift].IsPressed() || Keyboard.current[Key.RightShift].IsPressed();
+
+                var hh = Managers.GetManager<BaseHudHandler>();
+
+                if (accessPressed && shiftPressed)
+                {
+                    hideVanillaHexagon.Value = !hideVanillaHexagon.Value;
+                    hh?.DisplayCursorText("", 3f, "BeaconText: Hexagon " + (hideVanillaHexagon.Value ? "Hidden" : "Visible"));
+                }
+                else if (accessPressed)
                 {
                     showDistanceOnTop.Value = !showDistanceOnTop.Value;
+                    hh?.DisplayCursorText("", 3f, "BeaconText: Distance " + (showDistanceOnTop.Value ? "On Top" : "On Bottom"));
                 }
                 else
                 {
@@ -106,28 +119,44 @@ namespace UIBeaconText
                         m = 0;
                     }
                     displayMode.Value = m;
+                    
+
+                    hh?.DisplayCursorText("", 3f, "BeaconText: Display Mode " + (
+                        m switch
+                        {
+                            0 => "Off",
+                            1 => "Distance only",
+                            2 => "Title only",
+                            3 => "Title + Distance",
+                            _ => "???"
+                        }
+                    ));
                 }
             }
         }
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(MachineBeaconUpdater), "Start")]
-        static void MachineBeaconUpdater_Start(MachineBeaconUpdater __instance, GameObject ___player, 
-            GameObject ___canvas, float ___updateEverySec)
+        static void MachineBeaconUpdater_Start(
+            MachineBeaconUpdater __instance, 
+            GameObject ___canvas)
         {
+            var vanillaLabel = ___canvas.GetComponentInChildren<TextMeshProUGUI>();
+
             var s = 0.005f;
             var offset = 0.15f;
-            var rot = new Vector3(0, 180, 0);
+            var rot = new Vector3(0, 0, 0);
 
-            GameObject title = new GameObject("BeaconTitle");
-            title.transform.SetParent(___canvas.transform);
+            var title = new GameObject("BeaconTitle");
+            title.transform.SetParent(___canvas.transform, false);
             title.transform.localPosition = new Vector3(0, offset, 0);
             title.transform.localScale = new Vector3(s, s, s);
             title.transform.localEulerAngles = rot;
 
             var titleText = title.AddComponent<Text>();
-            titleText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            titleText.text = "Title";
+            
+            titleText.font = font;
+            titleText.text = "...";
             titleText.color = Color.white;
             titleText.fontSize = fontSize.Value;
             titleText.resizeTextForBestFit = false;
@@ -135,14 +164,14 @@ namespace UIBeaconText
             titleText.horizontalOverflow = HorizontalWrapMode.Overflow;
             titleText.alignment = TextAnchor.MiddleCenter;
 
-            GameObject distance = new GameObject("BeaconDistance");
-            distance.transform.SetParent(___canvas.transform);
+            var distance = new GameObject("BeaconDistance");
+            distance.transform.SetParent(___canvas.transform, false);
             distance.transform.localPosition = new Vector3(0, -offset, 0);
             distance.transform.localScale = new Vector3(s, s, s);
             distance.transform.localEulerAngles = rot;
 
-            var distanceText = distance.AddComponent<Text>();
-            distanceText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            var distanceText = distance.AddComponent<Text>(); 
+            distanceText.font = font;
             distanceText.text = "...";
             distanceText.color = Color.white;
             distanceText.fontSize = fontSize.Value;
@@ -151,7 +180,7 @@ namespace UIBeaconText
             distanceText.horizontalOverflow = HorizontalWrapMode.Overflow;
             distanceText.alignment = TextAnchor.MiddleCenter;
 
-            logger.LogInfo("Finding the World Object of the beacon");
+            Log("Finding the World Object of the beacon");
             WorldObject wo = null;
             var woa = __instance.GetComponent<WorldObjectAssociated>();
             if (woa != null)
@@ -165,47 +194,104 @@ namespace UIBeaconText
                     }
                 }
             }
+            var tp = wo == null ? __instance.GetComponent<TextProxy>() : null;
 
-            if (hideVanillaLabel.Value)
-            {
-                var vanillaLabel = __instance.gameObject.transform.Find("Canvas/Image (1)");
-                vanillaLabel?.gameObject.SetActive(false);
-            }
+            Log("Starting updater");
 
-            logger.LogInfo("Starting updater");
-            __instance.StartCoroutine(TextUpdater(___player, ___updateEverySec, __instance.gameObject, wo, titleText, distanceText));
+            var holder = ___canvas.AddComponent<BeaconTextHolder>();
+            holder.titleText = titleText;
+            holder.distanceText = distanceText;
+            holder.beaconWorldObject = wo;
+            holder.textProxy = tp;
+            holder.vanillaLabel = vanillaLabel;
+            holder.vanillaHexagon1 = ___canvas.transform.Find("Image")?.gameObject;
+            holder.vanillaHexagon2 = ___canvas.transform.Find("Image (1)")?.gameObject;
         }
 
-        static IEnumerator TextUpdater(GameObject ___player, float ___updateEverySec, GameObject canvas, 
-            WorldObject wo,
-            Text titleText,
-            Text distanceText)
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(MachineBeaconUpdater), "Update")]
+        static void MachineBeaconUpdater_Update(
+            MachineBeaconUpdater __instance, 
+            GameObject ___canvas
+        )
         {
-            for (; ; )
+            PlayersManager pm = Managers.GetManager<PlayersManager>();
+            if (pm == null)
             {
-                var dist = (int)Vector3.Distance(canvas.transform.position, ___player.transform.position);
-
-                if (showDistanceOnTop.Value)
-                {
-                    titleText.text = dist + "m";
-                    distanceText.text = wo?.GetText() ?? "";
-
-                    titleText.gameObject.SetActive((displayMode.Value & 1) != 0);
-                    distanceText.gameObject.SetActive((displayMode.Value & 2) != 0);
-                }
-                else
-                {
-                    distanceText.text = dist + "m";
-                    titleText.text = wo?.GetText() ?? "";
-
-                    titleText.gameObject.SetActive((displayMode.Value & 2) != 0);
-                    distanceText.gameObject.SetActive((displayMode.Value & 1) != 0);
-                }
-
-
-
-                yield return new WaitForSeconds(___updateEverySec);
+                return;
             }
+            var player = pm.GetActivePlayerController();
+            if (player == null)
+            {
+                return;
+            }
+            if (__instance == null)
+            {
+                return;
+            }
+            var holder = ___canvas.GetComponent<BeaconTextHolder>();
+
+            var beaconPos = __instance.transform.position;
+            var dist = (int)Vector3.Distance(beaconPos, player.transform.position);
+
+            var titleText = holder.titleText;
+            var distanceText = holder.distanceText;
+
+            var textValue = "";
+            if (holder.beaconWorldObject != null)
+            {
+                textValue = holder.beaconWorldObject.GetText();
+            }
+            else if (holder.textProxy != null)
+            {
+                textValue = holder.textProxy.GetText();
+            }
+
+            if (showDistanceOnTop.Value)
+            {
+                titleText.text = dist + "m";
+                distanceText.text = textValue;
+
+                titleText.gameObject.SetActive((displayMode.Value & 1) != 0);
+                distanceText.gameObject.SetActive((displayMode.Value & 2) != 0);
+            }
+            else
+            {
+                distanceText.text = dist + "m";
+                titleText.text = textValue;
+
+                titleText.gameObject.SetActive((displayMode.Value & 2) != 0);
+                distanceText.gameObject.SetActive((displayMode.Value & 1) != 0);
+            }
+            holder.vanillaLabel?.gameObject.SetActive(!hideVanillaLabel.Value);
+            holder.vanillaHexagon1?.SetActive(!hideVanillaHexagon.Value);
+            holder.vanillaHexagon2?.SetActive(!hideVanillaHexagon.Value);
+        }
+
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            foreach (var go in FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (go.name == "BeaconTitle" || go.name == "BeaconDistance")
+                {
+                    var txt = go.GetComponent<Text>();
+                    if (txt != null)
+                    {
+                        txt.fontSize = fontSize.Value;
+                    }
+                }
+            }
+        }
+
+        internal class BeaconTextHolder : MonoBehaviour
+        {
+            internal Text titleText;
+            internal Text distanceText;
+            internal WorldObject beaconWorldObject;
+            internal TextProxy textProxy;
+            internal TextMeshProUGUI vanillaLabel;
+            internal GameObject vanillaHexagon1;
+            internal GameObject vanillaHexagon2;
         }
     }
 }

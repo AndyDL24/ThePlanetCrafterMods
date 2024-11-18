@@ -1,4 +1,7 @@
-﻿using BepInEx;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
+using BepInEx;
 using SpaceCraft;
 using HarmonyLib;
 using UnityEngine;
@@ -7,111 +10,115 @@ using UnityEngine.EventSystems;
 using System.Collections.Generic;
 using BepInEx.Configuration;
 using System;
-using BepInEx.Bootstrap;
 using UnityEngine.InputSystem;
-using System.Reflection;
 using BepInEx.Logging;
 using System.Linq;
+using System.Reflection;
+using Unity.Netcode;
+using BepInEx.Bootstrap;
+using System.Collections;
+using LibCommon;
+using HarmonyLib.Tools;
+using System.Text;
 
 namespace UIHotbar
 {
     [BepInPlugin(modUiHotbarGuid, "(UI) Hotbar", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency("akarnokd.theplanetcraftermods.uitranslationhungarian", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(modUiPinRecipeGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(modCraftFromContainersGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(modFeatMultiplayerGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(modCheatCraftFromNearbyContainersGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         const string modUiHotbarGuid = "akarnokd.theplanetcraftermods.uihotbar";
-        const string modFeatMultiplayerGuid = "akarnokd.theplanetcraftermods.featmultiplayer";
+        const string modUiPinRecipeGuid = "akarnokd.theplanetcraftermods.uipinrecipe";
+        const string modCheatCraftFromNearbyContainersGuid = "akarnokd.theplanetcraftermods.cheatcraftfromnearbycontainers";
 
         static ConfigEntry<int> slotSize;
         static ConfigEntry<int> slotBottom;
         static ConfigEntry<int> fontSize;
+        static ConfigEntry<bool> debugMode;
 
-        static ManualLogSource logger;
+        static ManualLogSource _logger;
+
+        static readonly int shadowContainerId = 4000;
+        static readonly int shadowContainerIdMulti = 4001;
 
         static Action<Group> pinUnpinRecipe;
 
-        const string modCraftFromContainersGuid = "aedenthorn.CraftFromContainers";
-        const string modUiPinRecipeGuid = "akarnokd.theplanetcraftermods.uipinrecipe";
-        static ConfigEntry<bool> modCraftFromContainersEnabled;
-        static ConfigEntry<float> modCraftFromContainersRange;
+        static AccessTools.FieldRef<CanvasPinedRecipes, List<Group>> fCanvasPinedRecipesGroupsAdded;
+        static MethodInfo mCanvasPinedRecipesRemovePinnedRecipeAtIndex;
 
-        static readonly int shadowContainerId = 4000;
+        static Action<MonoBehaviour, Vector3, Action<List<Inventory>>> apiGetInventoriesInRange;
+        static Action<MonoBehaviour, Vector3, Action> apiPrepareSetNewGhost;
 
-        static string deferredRestore;
+        static List<Inventory> nearbyInventories = [];
 
-        static Func<string> mpGetMode;
+        static Coroutine nearbyInventoriesChecker;
 
-        static Action<Action> mpRegisterDataReady;
+        const string funcGetLoadout = "GetLoadout";
+        const string funcSetLoadout = "SetLoadout";
+        const string funcReceiveLoadout = "ReceiveLoadout";
 
-        static Func<string, string> mpGetData;
-
-        static Action<string, string> mpSetData;
-
-        static Func<string> mpHostState;
-
-        static Action<object> mpLogInfo;
-
-        private void Awake()
+        void Awake()
         {
+            LibCommon.BepInExLoggerFix.ApplyFix();
+
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
 
             slotSize = Config.Bind("General", "SlotSize", 75, "The size of each inventory slot");
             fontSize = Config.Bind("General", "FontSize", 20, "The font size of the slot index");
             slotBottom = Config.Bind("General", "SlotBottom", 40, "Placement of the panels relative to the bottom of the screen.");
+            debugMode = Config.Bind("General", "DebugMode", false, "Enable debug mode logging? (Chatty!)");
 
-            logger = Logger;
+            _logger = Logger;
 
-            if (Chainloader.PluginInfos.TryGetValue(modUiPinRecipeGuid, out BepInEx.PluginInfo pi))
+            fCanvasPinedRecipesGroupsAdded = AccessTools.FieldRefAccess<CanvasPinedRecipes, List<Group>>("groupsAdded");
+            mCanvasPinedRecipesRemovePinnedRecipeAtIndex = AccessTools.Method(typeof(CanvasPinedRecipes), "RemovePinnedRecipeAtIndex");
+            
+            pinUnpinRecipe = DefaultPinUnpinRecipe;
+
+            if (Chainloader.PluginInfos.TryGetValue(modUiPinRecipeGuid, out var pi))
             {
-                Logger.LogInfo("Found " + modUiPinRecipeGuid + ", enabling recipe pinning");
-
-                MethodInfo mi = AccessTools.Method(pi.Instance.GetType(), "PinUnpinGroup", new Type[] { typeof(Group) });
-                pinUnpinRecipe = AccessTools.MethodDelegate<Action<Group>>(mi, pi.Instance);
-            } 
-            else
-            {
-                Logger.LogInfo("Not Found " + modUiPinRecipeGuid);
-            }
-
-            if (Chainloader.PluginInfos.TryGetValue(modCraftFromContainersGuid, out pi))
-            {
-                Logger.LogInfo("Found " + modCraftFromContainersGuid + ", considering nearby inventory");
-
-                // From https://github.com/aedenthorn/PlanetCrafterMods/blob/master/CraftFromContainers/BepInExPlugin.cs
-
-                FieldInfo fi = AccessTools.Field(pi.Instance.GetType(), "modEnabled");
-                modCraftFromContainersEnabled = (ConfigEntry<bool>)fi.GetValue(pi.Instance);
-
-                fi = AccessTools.Field(pi.Instance.GetType(), "range");
-                modCraftFromContainersRange = (ConfigEntry<float>)fi.GetValue(pi.Instance);
+                Logger.LogInfo("Mod " + modUiPinRecipeGuid + " found, using it to pin recipes");
+                var m = AccessTools.Method(pi.Instance.GetType(), "PinUnpinGroup");
+                pinUnpinRecipe = AccessTools.MethodDelegate<Action<Group>>(m);
             }
             else
             {
-                Logger.LogInfo("Not Found " + modCraftFromContainersGuid);
+                Logger.LogInfo("Mod " + modUiPinRecipeGuid + " not found, using vanilla pins");
             }
 
-            if (Chainloader.PluginInfos.TryGetValue(modFeatMultiplayerGuid, out pi))
+            if (Chainloader.PluginInfos.TryGetValue(modCheatCraftFromNearbyContainersGuid, out pi))
             {
-                Logger.LogInfo("Found " + modFeatMultiplayerGuid + ", hotbar will be saved/restored on the host");
-                
-                mpGetMode = GetApi<Func<string>>(pi, "apiGetMultiplayerMode");
-                mpGetData = GetApi<Func<string, string>>(pi, "apiClientGetData");
-                mpSetData = GetApi<Action<string, string>>(pi, "apiClientSetData");
-                mpRegisterDataReady = GetApi<Action<Action>>(pi, "apiClientRegisterDataReady");
-                mpHostState = GetApi<Func<string>>(pi, "apiGetHostState");
-                mpLogInfo = GetApi<Action<object>>(pi, "apiLogInfo");
+                Logger.LogInfo("Mod " + modCheatCraftFromNearbyContainersGuid + " found. Considering nearby containers");
 
-                mpRegisterDataReady(RestoreHotbarMultiplayer);
+                apiGetInventoriesInRange = (Action<MonoBehaviour, Vector3, Action<List<Inventory>>>)AccessTools.Field(pi.Instance.GetType(), "apiGetInventoriesInRange").GetValue(null);
+                apiPrepareSetNewGhost = (Action<MonoBehaviour, Vector3, Action>)AccessTools.Field(pi.Instance.GetType(), "apiPrepareSetNewGhost").GetValue(null);
             }
             else
             {
-                Logger.LogInfo("Not Found " + modFeatMultiplayerGuid);
+                Logger.LogInfo("Mod " + modCheatCraftFromNearbyContainersGuid + " not found.");
             }
 
-            Harmony.CreateAndPatchAll(typeof(Plugin));
+            LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
+            var h = Harmony.CreateAndPatchAll(typeof(Plugin));
+
+            ModNetworking.Init(modUiHotbarGuid, Logger);
+            ModNetworking.Patch(h);
+            ModNetworking._debugMode = debugMode.Value;
+            ModNetworking.RegisterFunction(funcGetLoadout, OnGetLoadout);
+            ModNetworking.RegisterFunction(funcSetLoadout, OnSetLoadout);
+            ModNetworking.RegisterFunction(funcReceiveLoadout, OnReceiveLoadout);
+            ModNetworking.RegisterFunction(ModNetworking.FunctionClientConnected, OnClientConnected);
+        }
+
+        static void Log(object message)
+        {
+            if (debugMode.Value)
+            {
+                _logger.LogInfo(message);
+            }
         }
 
         void Update()
@@ -131,8 +138,8 @@ namespace UIHotbar
         }
 
         static GameObject parent;
-        static List<HotbarSlot> slots = new List<HotbarSlot>();
-        static int slotCount = 9;
+        static readonly List<HotbarSlot> slots = [];
+        static readonly int slotCount = 9;
         static int activeSlot = -1;
 
         class HotbarSlot
@@ -157,21 +164,20 @@ namespace UIHotbar
             }
         }
 
-        static Color defaultBackgroundColor = new Color(0.25f, 0.25f, 0.25f, 0.8f);
-        static Color defaultSlotNumberColor = new Color(1f, 1f, 1f, 1f);
-        static Color defaultInvisibleColor = new Color(0f, 0f, 0f, 0f);
-        static Color defaultHighlightColor = new Color(1f, 0.75f, 0f, 0.6f);
-        static Color defaultImageColor = new Color(1f, 1f, 1f, 1f);
-        static Color defaultImageColorDimmed = new Color(1f, 1f, 1f, 0.5f);
-        static Color defaultCanCraftColor = new Color(0.5f, 1f, 0.5f, 1f);
-        static Color defaultCannotCraftColor = new Color(1f, 0.5f, 0.5f, 1f);
+        static Color defaultBackgroundColor = new(0.25f, 0.25f, 0.25f, 0.8f);
+        static Color defaultSlotNumberColor = new(1f, 1f, 1f, 1f);
+        static Color defaultInvisibleColor = new(0f, 0f, 0f, 0f);
+        static Color defaultHighlightColor = new(1f, 0.75f, 0f, 0.6f);
+        static Color defaultImageColor = new(1f, 1f, 1f, 1f);
+        static Color defaultImageColorDimmed = new(1f, 1f, 1f, 0.5f);
+        static Color defaultCanCraftColor = new(0.5f, 1f, 0.5f, 1f);
+        static Color defaultCannotCraftColor = new(1f, 0.5f, 0.5f, 1f);
 
         void Setup()
         {
             if (parent == null)
             {
-                Logger.LogInfo("Begin Creating the Hotbar");
-                mpLogInfo?.Invoke("Begin Creating the Hotbar");
+                Log("Begin Creating the Hotbar");
                 parent = new GameObject("HotbarCanvas");
                 Canvas canvas = parent.AddComponent<Canvas>();
                 canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -183,7 +189,7 @@ namespace UIHotbar
                 slots.Clear();
                 for (int i = 0; i < slotCount; i++)
                 {
-                    HotbarSlot slot = new HotbarSlot();
+                    var slot = new HotbarSlot();
                     slots.Add(slot);
 
                     RectTransform rectTransform;
@@ -258,6 +264,15 @@ namespace UIHotbar
                 }
 
                 RestoreHotbar();
+
+                if (nearbyInventoriesChecker != null) {
+                    StopCoroutine(nearbyInventoriesChecker);
+                    nearbyInventoriesChecker = null;
+                }
+                if (apiGetInventoriesInRange != null)
+                {
+                    nearbyInventoriesChecker = StartCoroutine(UpdateNearbyInventories());
+                }
             }
         }
 
@@ -271,9 +286,43 @@ namespace UIHotbar
                 }
             }
             slots.Clear();
-            UnityEngine.Object.Destroy(parent);
+            Destroy(parent);
             parent = null;
             activeSlot = -1;
+            if (nearbyInventoriesChecker != null)
+            {
+                StopCoroutine(nearbyInventoriesChecker);
+                nearbyInventoriesChecker = null;
+            }
+        }
+
+        IEnumerator UpdateNearbyInventories()
+        {
+            var wait = new WaitForSeconds(0.25f);
+
+            for (; ; )
+            {
+                var pm = Managers.GetManager<PlayersManager>();
+                if (pm != null)
+                {
+                    var ac = pm.GetActivePlayerController();
+                    if (ac != null)
+                    {
+                        var callbackWaiter = new CallbackWaiter();
+                        apiGetInventoriesInRange(this, ac.transform.position, list =>
+                        {
+                            nearbyInventories = list;
+                            callbackWaiter.Done();
+                        });
+
+                        while (!callbackWaiter.IsDone)
+                        {
+                            yield return null;
+                        }
+                    }
+                }
+                yield return wait;
+            }
         }
 
         void UpdateRender(PlayerMainController player)
@@ -283,7 +332,7 @@ namespace UIHotbar
 
             int oldActiveSlot = activeSlot;
 
-            Dictionary<string, int> inventoryCounts = new Dictionary<string, int>();
+            Dictionary<string, int> inventoryCounts = [];
             CountInventory(player, inventoryCounts);
 
             if (wh != null && !wh.GetHasUiOpen())
@@ -295,7 +344,7 @@ namespace UIHotbar
                         && k < slots.Count && slots[k].currentGroup != null)
                     {
                         Group g = slots[k].currentGroup;
-                        Logger.LogInfo("Pin/Unpin Recipe for " + g.GetId());
+                        Log("Pin/Unpin Recipe for " + g.GetId());
                         pinUnpinRecipe.Invoke(g);
                     }
                     else
@@ -309,7 +358,7 @@ namespace UIHotbar
                                 // cancel current ghost
                                 if (pb.GetIsGhostExisting())
                                 {
-                                    Logger.LogInfo("Cancelling previous ghost");
+                                    Log("Cancelling previous ghost");
                                     pb.InputOnCancelAction();
                                 }
 
@@ -318,8 +367,19 @@ namespace UIHotbar
                                 // activate build mode for slot k
                                 if (isFreeCraft || BuildableCount(inventoryCounts, gc) > 0)
                                 {
-                                    Logger.LogInfo("Activating ghost for " + gc.GetId());
-                                    pb.SetNewGhost(gc);
+                                    Log("Activating ghost for " + gc.GetId());
+
+                                    if (apiPrepareSetNewGhost != null)
+                                    {
+                                        apiPrepareSetNewGhost(this, pb.transform.position, () =>
+                                        {
+                                            pb.SetNewGhost(gc);
+                                        });
+                                    }
+                                    else
+                                    {
+                                        pb.SetNewGhost(gc);
+                                    }
                                 }
                                 else
                                 {
@@ -334,7 +394,7 @@ namespace UIHotbar
                             // cancel current ghost
                             if (pb.GetIsGhostExisting())
                             {
-                                Logger.LogInfo("Cancelling current ghost");
+                                Log("Cancelling current ghost");
                                 pb.InputOnCancelAction();
                             }
                         }
@@ -389,35 +449,6 @@ namespace UIHotbar
             }
         }
 
-        static void CountNearbyInventories(float range, PlayerMainController player, Dictionary<string, int> inventoryCounts)
-        {
-            // based on logic: https://github.com/aedenthorn/PlanetCrafterMods/blob/master/CraftFromContainers/BepInExPlugin.cs#L110
-            Vector3 playerAt = player.transform.position;
-            Inventory playerInventory = player.GetPlayerBackpack().GetInventory();
-            foreach (InventoryAssociated ia in FindObjectsByType<InventoryAssociated>(FindObjectsSortMode.None))
-            {
-                if (ia.name != null && !ia.name.Contains("GoldenContainer") && !ia.name.Contains("WorldContainer")) {
-                    try
-                    {
-                        Inventory inv = ia.GetInventory();
-                        if (inv != null && inv != playerInventory)
-                        {
-                            Vector3 inventoryAt = ia.transform.position;
-
-                            if (Vector3.Distance(playerAt, inventoryAt) <= range)
-                            {
-                                CountInventory(inv, inventoryCounts);
-                            }
-                        }
-                    } 
-                    catch
-                    {
-                        // some kind of invalid or destroyed inventory?
-                    }
-                }
-            }
-        }
-
         static void CountInventory(Inventory inv, Dictionary<string, int> counts)
         {
             foreach (WorldObject wo in inv.GetInsideWorldObjects())
@@ -430,11 +461,18 @@ namespace UIHotbar
 
         static void CountInventory(PlayerMainController player, Dictionary<string, int> inventoryCounts)
         {
-            CountInventory(player.GetPlayerBackpack().GetInventory(), inventoryCounts);
-
-            if (modCraftFromContainersEnabled != null && modCraftFromContainersEnabled.Value)
+            // In multiplayer, these may be null for a few frames
+            if (player.GetPlayerBackpack() == null || player.GetPlayerBackpack().GetInventory() == null) 
             {
-                CountNearbyInventories(modCraftFromContainersRange.Value, player, inventoryCounts);
+                return;    
+            }
+            CountInventory(player.GetPlayerBackpack().GetInventory(), inventoryCounts);
+            foreach (var inv in nearbyInventories)
+            {
+                if (inv != null)
+                {
+                    CountInventory(inv, inventoryCounts);
+                }
             }
         }
 
@@ -442,7 +480,7 @@ namespace UIHotbar
         {
             List<Group> recipe = gc.GetRecipe().GetIngredientsGroupInRecipe();
             // agregate recipe
-            Dictionary<string, int> recipeCounts = new Dictionary<string, int>();
+            Dictionary<string, int> recipeCounts = [];
             foreach (Group group in recipe)
             {
                 string gid = group.GetId();
@@ -467,10 +505,10 @@ namespace UIHotbar
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(PlayerBuilder), nameof(PlayerBuilder.SetNewGhost))]
-        static bool PlayerBuilder_SetNewGhost(GroupConstructible groupConstructible, ConstructibleGhost ___ghost)
+        static bool PlayerBuilder_SetNewGhost(Group groupConstructible, ConstructibleGhost ____ghost)
         {
-            logger.LogInfo("New Ghost Set: " + groupConstructible?.GetId() ?? "null");
-            logger.LogInfo("Previous Ghost: " + (___ghost != null ? "Exists" : "Doesn't Exist"));
+            Log("New Ghost Set: " + groupConstructible?.GetId() ?? "null");
+            Log("Previous Ghost: " + (____ghost != null ? "Exists" : "Doesn't Exist"));
             if (groupConstructible != null) {
                 for (int i = 0; i < slots.Count; i++)
                 {
@@ -506,22 +544,22 @@ namespace UIHotbar
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PlayerBuilder), nameof(PlayerBuilder.InputOnCancelAction))]
-        static void PlayerBuilder_InputOnCancelAction_Post(ref ConstructibleGhost ___ghost)
+        static void PlayerBuilder_InputOnCancelAction_Post(ref ConstructibleGhost ____ghost)
         {
             // workaround for Unity's fake null problem
-            ___ghost = null;
+            ____ghost = null;
         }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(UiWindowConstruction), "OnImageClicked")]
-        static bool UiWindowConstruction_OnImageClicked(EventTriggerCallbackData _eventTriggerCallbackData)
+        static bool UiWindowConstruction_OnImageClicked(EventTriggerCallbackData eventTriggerCallbackData)
         {
-            if (_eventTriggerCallbackData.pointerEventData.button == PointerEventData.InputButton.Left)
+            if (eventTriggerCallbackData.pointerEventData.button == PointerEventData.InputButton.Left)
             {
                 int slot = WhichNumberKeyHeld();
                 if (slot >= 0)
                 {
-                    PinUnpinGroup(_eventTriggerCallbackData.group, slot);
+                    PinUnpinGroup(eventTriggerCallbackData.group, slot);
                     SaveHotbar();
                     return false;
                 }
@@ -529,10 +567,10 @@ namespace UIHotbar
             return true;
         }
 
-        static Key[] numberKeys =
-        {
+        static readonly Key[] numberKeys =
+        [
             Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
-        };
+        ];
 
         static int WhichNumberKeyHeld()
         {
@@ -567,14 +605,14 @@ namespace UIHotbar
                 Image image = hotbarSlot.image.GetComponent<Image>();
                 if (hotbarSlot.currentGroup == null || hotbarSlot.currentGroup.GetId() != group.GetId())
                 {
-                    logger.LogInfo("Pinning to slot " + slot + " - " + group.GetId());
+                    Log("Pinning to slot " + slot + " - " + group.GetId());
                     hotbarSlot.currentGroup = group;
                     image.sprite = group.GetImage();
                     image.color = new Color(1f, 1f, 1f, 1f);
                 }
                 else
                 {
-                    logger.LogInfo("Unpinning to slot " + slot);
+                    Log("Unpinning to slot " + slot);
                     hotbarSlot.currentGroup = null;
                     image.sprite = null;
                     image.color = new Color(0f, 0f, 0f, 0f);
@@ -598,7 +636,7 @@ namespace UIHotbar
         static void ClearSlot(int slotId)
         {
             var hotbarSlot = slots[slotId];
-            logger.LogInfo("Unpinning to slot " + slotId);
+            Log("Unpinning to slot " + slotId);
             hotbarSlot.currentGroup = null;
             var image = hotbarSlot.image.GetComponent<Image>();
             image.sprite = null;
@@ -616,10 +654,10 @@ namespace UIHotbar
 
         static WorldObject EnsureHiddenContainer()
         {
-            var wo = WorldObjectsHandler.GetWorldObjectViaId(shadowContainerId);
+            var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(shadowContainerId);
             if (wo == null)
             {
-                wo = WorldObjectsHandler.CreateNewWorldObject(GroupsHandler.GetGroupViaId("Container2"), shadowContainerId);
+                wo = WorldObjectsHandler.Instance.CreateNewWorldObject(GroupsHandler.GetGroupViaId("Container2"), shadowContainerId);
                 wo.SetText("");
             }
             wo.SetDontSaveMe(false);
@@ -628,7 +666,6 @@ namespace UIHotbar
 
         static void SaveHotbar()
         {
-            var wo = EnsureHiddenContainer();
             var str = string.Join(",", slots.Select(slot =>
             {
                 var g = slot.currentGroup;
@@ -638,53 +675,30 @@ namespace UIHotbar
                 }
                 return g.id;
             }));
-            wo.SetText(str);
-            SaveHotbarMultiplayer(str);
-        }
 
-        static void SaveHotbarMultiplayer(string data)
-        {
-            if (mpGetMode != null && mpGetMode() == "CoopClient")
+            if (NetworkManager.Singleton?.IsServer ?? true)
             {
-                if (mpHostState() == "Active")
-                {
-                    mpLogInfo("SaveHotbarMultiplayer: " + data);
-                    mpSetData(modUiHotbarGuid + ".slots", data);
-                }
-                else
-                {
-                    mpLogInfo("SaveHotbarMultiplayer not active");
-                }
-            }
-        }
-
-        static void RestoreHotbarMultiplayer()
-        {
-            mpLogInfo("RestoreHotbarMultiplayer");
-            var data = mpGetData(modUiHotbarGuid + ".slots");
-            mpLogInfo("RestoreHotbarMultiplayer: " + data);
-            if (slots.Count != slotCount)
+                var wo = EnsureHiddenContainer();
+                wo.SetText(str);
+            } else
             {
-                deferredRestore = data;
-                mpLogInfo("RestoreHotbarMultiplayer - deferring restore");
-                return;
+                SaveHotbarClient(str);
             }
-            RestoreHotbarFromString(data);
-            mpLogInfo("RestoreHotbarMultiplayer - Done");
         }
 
         static void RestoreHotbar()
         {
-            var wo = EnsureHiddenContainer();
-            var dr = deferredRestore;
-            if (dr != null)
+            // FIXME Multiplayer
+            if (NetworkManager.Singleton?.IsServer ?? true)
             {
-                deferredRestore = null;
-                RestoreHotbarFromString(dr);
+                Log("RestoreHotbar Server");
+                var wo = EnsureHiddenContainer();
+                RestoreHotbarFromString(wo.GetText());
             }
             else
             {
-                RestoreHotbarFromString(wo.GetText());
+                Log("RestoreHotbar Client");
+                CallGetLoadout();
             }
         }
 
@@ -715,14 +729,197 @@ namespace UIHotbar
             }
         }
 
-        private static T GetApi<T>(BepInEx.PluginInfo pi, string name)
+        static void DefaultPinUnpinRecipe(Group g)
         {
-            var fi = AccessTools.Field(pi.Instance.GetType(), name);
-            if (fi == null)
+            CanvasPinedRecipes canvasPinedRecipes = Managers.GetManager<CanvasPinedRecipes>();
+
+            if (canvasPinedRecipes != null)
             {
-                throw new NullReferenceException("Missing field " + pi.Instance.GetType() + "." + name);
+                if (canvasPinedRecipes.GetIsPinPossible())
+                {
+                    var list = fCanvasPinedRecipesGroupsAdded(canvasPinedRecipes);
+
+                    var idx = list.IndexOf(g);
+                    if (idx < 0)
+                    {
+                        canvasPinedRecipes.AddPinedRecipe(g);
+                    }
+                    else
+                    {
+                        mCanvasPinedRecipesRemovePinnedRecipeAtIndex.Invoke(canvasPinedRecipes, [idx]);
+                    }
+                }
+                else
+                {
+                    Managers.GetManager<BaseHudHandler>().DisplayCursorText("UIHotbar_MissingPinChip", 5f);
+                }
             }
-            return (T)fi.GetValue(null);
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(Localization), "LoadLocalization")]
+        static void Localization_LoadLocalization(
+        Dictionary<string, Dictionary<string, string>> ___localizationDictionary)
+        {
+            if (___localizationDictionary.TryGetValue("hungarian", out var dict))
+            {
+                dict["UIHotbar_MissingPinChip"] = "Nem lehet rögzíteni a receptet! Kérlek szerelj fel egy <color=#FFFF00>Recept kitűzés Mikrocsipet</color>.";
+            }
+            if (___localizationDictionary.TryGetValue("english", out dict))
+            {
+                dict["UIHotbar_MissingPinChip"] = "Can't pin recipe! Please equip a <color=#FFFF00>Recipe Pinning Microchip</color> first.";
+            }
+        }
+
+        // Do not emote while the command console is open by pressing 1-9
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerThirdPersonView), "ShortcutEmote")]
+        static bool PlayerThirdPersonView_ShortcutEmote()
+        {
+            return Keyboard.current[Key.LeftAlt].isPressed;
+        }
+
+        static WorldObject EnsureHiddenContainerMultiplayer()
+        {
+            var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(shadowContainerIdMulti);
+            if (wo == null)
+            {
+                wo = WorldObjectsHandler.Instance.CreateNewWorldObject(GroupsHandler.GetGroupViaId("Container2"), shadowContainerIdMulti);
+                wo.SetText("");
+            }
+            wo.SetDontSaveMe(false);
+            return wo;
+        }
+
+        static Dictionary<string, string> ParseLoadoutMulti(string str)
+        {
+            Dictionary<string, string> result = [];
+            foreach (var entry in str.Split(';'))
+            {
+                var idStr = entry.Split("=");
+                if (idStr.Length == 2) 
+                {
+                    result[idStr[0]] = idStr[1];
+                }
+            }
+            return result;
+        }
+
+        static string SerializeLoadoutMulti(Dictionary<string, string> result)
+        {
+            var sb = new StringBuilder(256);
+            foreach (var kv in result)
+            {
+                if (sb.Length != 0)
+                {
+                    sb.Append(';');
+                }
+                sb.Append(kv.Key.Replace('|', ' ').Replace('@', ' ')).Append("=").Append(kv.Value);
+            }
+            return sb.ToString();
+        }
+
+        static void OnGetLoadout(ulong sender, string parameters)
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm != null)
+            {
+                var wo = EnsureHiddenContainerMultiplayer();
+                var dict = ParseLoadoutMulti(wo.GetText() ?? "");
+
+                var idName = parameters.Split(',');
+                if (idName.Length == 2)
+                {
+                    Log("OnGetLoadout via parameters: " + parameters);
+                    var nm = idName[1].Replace('|', ' ').Replace('@', ' ');
+                    if (dict.TryGetValue(nm, out var str))
+                    {
+                        Log("OnGetLoadout via parameters: " + sender + " ~ " + parameters + " -> " + str);
+                        ModNetworking.SendClient(sender, funcReceiveLoadout, str);
+                        return;
+                    }
+                }
+                Log("OnGetLoadout - Client info not found: " + sender + " ~ " + parameters);
+            }
+            else
+            {
+                Log("OnGetLoadout: No PlayersManager");
+            }
+        }
+
+        static void OnSetLoadout(ulong sender, string parameters)
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm != null)
+            {
+                var wo = EnsureHiddenContainerMultiplayer();
+                var dict = ParseLoadoutMulti(wo.GetText() ?? "");
+                var idName = parameters.Split('=');
+                if (idName.Length == 2)
+                {
+                    Log("OnSetLoadout via parameters: " + sender + " ~ " + parameters);
+                    var nm = idName[0].Replace('|', ' ').Replace('@', ' ');
+                    dict[nm] = idName[1];
+
+                    wo.SetText(SerializeLoadoutMulti(dict));
+                    return;
+                }
+                Log("OnSetLoadout - Client info not found: " + sender);
+            }
+            else
+            {
+                Log("OnSetLoadout: No PlayersManager");
+            }
+        }
+
+        static void OnReceiveLoadout(ulong sender, string parameters)
+        {
+            RestoreHotbarFromString(parameters);
+        }
+
+        static void OnClientConnected(ulong sender, string parameters)
+        {
+            if (!(NetworkManager.Singleton?.IsServer ?? true))
+            {
+                Log("OnClientConnected Client -> Call GetLoadout");
+                CallGetLoadout();
+            }
+        }
+
+        static void CallGetLoadout()
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm != null)
+            {
+                var pc = pm.GetActivePlayerController();
+                if (pc != null)
+                {
+                    var msg = pc.id + "," + pc.playerName;
+                    Log("CallGetLoadout: " + msg);
+                    ModNetworking.SendHost(funcGetLoadout, msg);
+                }
+            }
+        }
+
+        static void SaveHotbarClient(string str)
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm != null)
+            {
+                var ac = pm.GetActivePlayerController().playerName;
+                str = ac + "=" + str;
+                Log("SaveHotbarClient: Call SetLoadout " + str);
+                ModNetworking.SendHost(funcSetLoadout, str);
+            }
+            else
+            {
+                Log("SaveHotbarClient: PlayersManager is null");
+            }
+        }
+
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            ModNetworking._debugMode = debugMode.Value;
         }
     }
 }

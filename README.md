@@ -4,26 +4,23 @@ BepInEx+Harmony mods for the Unity/Steam game The Planet Crafter
 - Steam: https://store.steampowered.com/app/1284190/The_Planet_Crafter/
 - GoG: https://www.gog.com/en/game/the_planet_crafter
 
-Guide on dnSpy-based manual patches: https://steamcommunity.com/sharedfiles/filedetails/?id=2784319459
-
 ## Version <a href='https://github.com/akarnokd/ThePlanetCrafterMods/releases'><img src='https://img.shields.io/github/v/release/akarnokd/ThePlanetCrafterMods' alt='Latest GitHub Release Version'/></a>
 
 [![Github All Releases](https://img.shields.io/github/downloads/akarnokd/ThePlanetCrafterMods/total.svg)](https://github.com/akarnokd/ThePlanetCrafterMods/releases)
 
 :arrow_down_small: Download files from the releases: https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest
 
-## Supported Game Version: 0.9.013
+## Supported Game Version: 1.316 or later
 
-Public releases are relatively infrequent (once in a few months). I'll do my best to keep my mods up-to-date in case something drastic changes inside the main game.
+With or without the DLC.
 
-:warning: I have not tested my mods with the developer/preview/demo releases. They might work just fine or suddenly break.
-I don't promise to fix my mods for these versions as they can get quite out-of-sync with the public release.
+This repo only supports the very latest Steam or GoG releases.
 
 ## Preparation
 
 In order to use my or anyone other's mods, you need to install BepInEx first. The wiki has a guide for this:
 
-https://planet-crafter.fandom.com/wiki/Modding#Using_Mods
+https://planet-crafter.fandom.com/wiki/Modding#Installation
 
 When installing my mods, unzip the mod into the `BepInEx\Plugins` directory, including the folder inside the zip file.
 
@@ -45,19 +42,22 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 ### Content
 
 - [Command Console](#feat-command-console)
-- [Multiplayer](https://github.com/akarnokd/ThePlanetCrafterMods/wiki/%28Feat%29-Multiplayer)
 - [Technician's Exile](#feat-technicians-exile)
 - [Space Cows](#feat-space-cows)
 - [Plugin Update Checker](https://github.com/akarnokd/ThePlanetCrafterMods/wiki/%28Misc%29-Plugin-Update-Checker)
+- [Rods](#item-rods)
 
 ### Cheats
 
 - [Asteroid Landing Position Override](#cheat-asteroid-landing-position-override)
 - [Auto Consume Oxygen-Water-Food](#cheat-auto-consume-oxygen-water-food)
+- [Auto Grab And Mine](#cheat-auto-grab-and-mine)
 - [Auto Harvest](#cheat-auto-harvest)
 - [Auto Launch Rockets](#cheat-auto-launch-rockets)
 - [Auto Sequence DNA](#cheat-auto-sequence-dna)
+- [Auto Store](#cheat-auto-store)
 - [Birthday](#cheat-birthday)
+- [Craft From Nearby Containers](#cheat-craft-from-nearby-containers)
 - [Highlight Nearby Resources](#cheat-highlight-nearby-resources)
 - [Inventory Stacking](#cheat-inventory-stacking)
 - [Machines Deposit Into Remote Containers](#cheat-machines-deposit-into-remote-containers)
@@ -65,23 +65,26 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [More Trade](#cheat-more-trade)
 - [Photomode Hide Water](#cheat-photomode-hide-water)
 - [Recyclers Deposit Into Remote Containers](#cheat-recyclers-deposit-into-remote-containers)
-- [Teleport to Nearest Minable](#cheat-teleport-to-nearest-minable)
+- [Wreck Map](#cheat-wreck-map)
 
 ### User Interface or Quality of Life
 
 - [Beacon Text](#ui-beacon-text)
+- [Continue](#ui-continue)
+- [Customize Flashlight](#misc-customize-flashlight)
 - [Customize Inventory Sort Order](#ui-customize-inventory-sort-order)
-- [Don't Close Craft Window](#ui-dont-close-craft-window)
 - [Hotbar](#ui-hotbar)
 - [Inventory Move Multiple Items](#ui-inventory-move-multiple-items)
 - [Logistic Select All](#logistic-select-all)
 - [Menu Shortcut Keys](#ui-menu-shortcut-keys)
+- [Mod Config Menu](#ui-mod-config-menu)
 - [Overview Panel](#ui-overview-panel)
 - [Pin Recipe to Screen](#ui-pin-recipe-to-screen)
 - [Prevent Accidental Deconstruct](#ui-prevent-accidental-deconstruct)
 - [Save When Quitting](#ui-save-when-quitting)
 - [Show Consumable Counts](#ui-show-consumable-counts)
 - [Show Container Content Info](#ui-show-container-content-info)
+- [Show Crash](#ui-show-crash)
 - [Show ETA](#ui-show-eta)
 - [Show Grab N Mine Count](#ui-show-grab-n-mine-count)
 - [Show MultiTool Mode](#ui-show-multitool-mode)
@@ -89,23 +92,31 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Show Player Tooltip Item Count](#ui-show-player-tooltip-item-count)
 - [Show Rocket Counts](#ui-show-rocket-counts)
 - [Sort Saves](#ui-sort-saves)
+- [Stack In-Range List](#ui-stack-in-range-list)
 - [Telemetry Font Sizer](#ui-telemetry-font-sizer)
 
 ### Translations
 
 - [Český překlad](#ui-cesky-preklad) (Czech translation)
 - [Estonian Translation](#ui-estonian-translation)
+- [Korean Translation](#ui-korean-translation)
 - [Magyar Fordítás](#ui-hungarian-translation) (Hungarian translation)
 - [Traduzione Italiana](#ui-italian-translation) (Italian translation)
 - [Polish Translation](#ui-polish-translation)
 - [Romanian Translation](#ui-romanian-translation)
+- [Ukrainian Translation](#ui-ukrainian-translation)
+
+### Multiplayer
+
+- [Player Locator](#multi-player-locator)
 
 ### Other
 
 - [Reduce Save Size](#perf-reduce-save-size)
 - [Save Auto Backup](#save-auto-backup)
 - [Auto Save](#save-auto-save)
-- [Unbrick Save](#fix-unbrick-save)
+- [Quick Save](#save-quick-save)
+- [Startup Performance](#perf-startup)
 - [Unofficial Patches](#fix-unofficial-patches)
 
 ### Mods from former Modders
@@ -114,8 +125,17 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 
 - [Auto Move](#lathrey-auto-move)
 - [Disable Build Constraints](#lathrey-disable-build-constraints)
-- [Improve Performance](#lathrey-improve-performance)
 
+
+### Discontinued mods (via 0.9.025)
+
+- [Teleport to Nearest Minable](#cheat-teleport-to-nearest-minable)
+- [Improve Performance](#lathrey-improve-performance)
+- [Unbrick Save](#fix-unbrick-save)
+- [Multiplayer](https://github.com/akarnokd/ThePlanetCrafterMods/wiki/%28Feat%29-Multiplayer)
+- [Don't Close Craft Window](#ui-dont-close-craft-window)
+
+ 
 ## (Cheat) Asteroid Landing Position Override
 
 Fixes the asteroid landing position relative to the player by an offset.
@@ -135,10 +155,20 @@ Note that currently, this may fail if the landing position is determined by the 
 # Default value: 100
 DeltaX = 100
 
+## Relative position up-down.
+# Setting type: Int32
+# Default value: 0
+DeltaY = 0
+
 ## Relative position north-south (north is positive).
 # Setting type: Int32
 # Default value: 0
 DeltaZ = 0
+
+## Should the DeltaX, DeltaY and DeltaZ interpreted instead of absolute coordinates?.
+# Setting type: Boolean
+# Default value: false
+Absolute = false
 ```
 
 ## (Cheat) Auto Consume Oxygen-Water-Food
@@ -425,7 +455,7 @@ Press <kbd>Ctrl+X</kbd> to highlight and cycle backward through the set of resou
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatnearbyresourceshighlight.cfg`
+<details><summary> akarnokd.theplanetcraftermods.cheatnearbyresourceshighlight.cfg </summary>
 
 ```
 [General]
@@ -464,8 +494,8 @@ LineIndicatorLength = 5
 # Setting type: Single
 # Default value: 15
 TimeToLive = 15
-
 ```
+</details>
 
 ## (Cheat) Inventory Capacity Override
 
@@ -477,7 +507,7 @@ This mod makes no attempts at remedying this shortcoming.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatinventorycapacity.cfg`
+<details><summary> akarnokd.theplanetcraftermods.cheatinventorycapacity.cfg </summary>
 
 ```
 [General]
@@ -492,6 +522,7 @@ Capacity = 250
 # Default value: true
 Enabled = false
 ```
+</details>
 
 ## (Cheat) Machines Deposit Into Remote Containers
 
@@ -508,11 +539,11 @@ Typical identifiers are:
 -`Cobalt`,`Silicon`,`Iron`,`ice`,
 `Magnesium`,`Titanium`,`Aluminium`,`Uranim`,
 `Iridium`,`Alloy`,`Zeolite`,`Osmium`,
-`Sulfur`, `PulsarQuartz`
+`Sulfur`, `PulsarQuartz`, `Obsidian`
 
 You can also make the water and methane extractors deposit remotely by naming containers:
 
-- `*WaterBottle1`, `*OxygenCapsule1`, `*MethanCapsule1`
+- `*WaterBottle1`, `*OxygenCapsule1`, `*MethanCapsule1`, `NitrogenCapsule1`
 
 Biodome T2 generated tree barks can be deposited remotely too via `*TreeRoot`.
 
@@ -528,26 +559,37 @@ You can override the default naming convention via the `Aliases` configuration o
 The identifiers are case sensitive, the target names are case insensitive. You can have the same alias for multiple resources. With overrides, there is no need for the `*` prefix.
 
 You can have as many containers as you like, but they will be filled in non-deterministically.
-If there are no renamed containers or all renamed containers are full, the machines
-will deposit the resource into their own container, as would they without this mod.
-
-If the mod **Ore Extractor Tweaks** by *Lathrey* is present, its ore generator functionality is integrated with this mod. Specifically, if `configOnlyExtractDetectedOre` is true *and* a machine mines a common ore *and* there is no target inventory for it, the ore is not deposited anywhere.
+If there are no renamed containers or all renamed containers are full, the machines will stop producing items. They don't use their own inventory because they would seize up completely while using this mod.
 
 Note also that machines are slow to mine resources.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatmachineremotedeposit.cfg`
+<details><summary> akarnokd.theplanetcraftermods.cheatmachineremotedeposit.cfg </summary>
 
 ```
 [General]
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Produce detailed logs? (chatty)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
 ## A comma separated list of resourceId:aliasForId, for example, Iron:A,Cobalt:B,Uranim:C
 # Setting type: String
 # Default value: 
 Aliases = 
 ```
+</details>
 
 ## (Cheat) Teleport to Nearest Minable
+
+:warning: **Discontinued**.
 
 Locates the nearest **minable resource** or **grabable larvae** (configurable).
 
@@ -604,7 +646,7 @@ Display a minimap on the lower left side of the screen.
 Press <kbd>N</kbd> to show/hide the minimap.
 Press <kbd>Shift+N</kbd> or <kbd>Mouse 4</kbd> to zoom in.
 Press <kbd>Ctrl+N</kbd> or <kbd>Mouse 5</kbd> to zoom out.
-Press <kbd>Alt+N</kbd> to show/hide/autoscan chests.
+Press <kbd>Alt+N</kbd> to show/hide/autoscan chests/servers/ladders.
 
 Notes
 - Uses two static maps: barren and lush, where lush is currently set to show after 200 MTi.
@@ -615,7 +657,7 @@ Notes
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatminimap.cfg`
+<details><summary> akarnokd.theplanetcraftermods.cheatminimap.cfg </summary>
 
 ```
 [General]
@@ -633,12 +675,17 @@ MapBottom = 350
 ## Panel position from the left of the screen
 # Setting type: Int32
 # Default value: 0
-MapLeft = 150
+MapLeft = 0
 
 ## The zoom level
 # Setting type: Int32
 # Default value: 4
-ZoomLevel = 4
+ZoomLevel = 20
+
+## The maximum zoom level
+# Setting type: Int32
+# Default value: 13
+MaxZoomLevel = 20
 
 ## The key to press to toggle the minimap
 # Setting type: String
@@ -664,7 +711,43 @@ AutoScanForChests = 5
 # Setting type: Int32
 # Default value: -1
 FixedRotation = -1
+
+## Not meant for end-users. (Photographs the map when pressing U for development purposes.)
+# Setting type: Boolean
+# Default value: false
+PhotographMap = false
+
+## Should the map be visible?
+# Setting type: Boolean
+# Default value: true
+MapVisible = false
+
+## The size of the names of other players, use 0 to disable showing their name.
+# Setting type: Int32
+# Default value: 16
+FontSize = 16
+
+## Show the ladders in the procedural wrecks?
+# Setting type: Boolean
+# Default value: true
+ShowWreckLadders = true
+
+## Show the server racks?
+# Setting type: Boolean
+# Default value: true
+ShowServers = true
+
+## Show the wreck safes?
+# Setting type: Boolean
+# Default value: true
+ShowSafes = true
+
+## The color of the out-of-bounds area as ARGB ints of range 0-255
+# Setting type: String
+# Default value: 255,127,106,0
+OutOfBoundsColor = 255,127,106,0
 ```
+</details>
 
 ## (Cheat) Inventory Stacking
 
@@ -677,15 +760,20 @@ found all places where this can be bad. Backup your saves!
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.cheatinventorystacking.cfg`
+<details><summary> akarnokd.theplanetcraftermods.cheatinventorystacking.cfg </summary>
 
 ```
 [General]
 
+## Produce detailed logs? (chatty)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
 ## The stack size of all item types in the inventory
 # Setting type: Int32
 # Default value: 10
-StackSize = 250
+StackSize = 10
 
 ## The font size for the stack amount
 # Setting type: Int32
@@ -711,7 +799,48 @@ StackOptimizer = false
 # Setting type: Boolean
 # Default value: true
 StackBackpack = true
+
+## Allow stacking in Ore Extractors.
+# Setting type: Boolean
+# Default value: true
+StackOreExtractors = true
+
+## Allow stacking in Water Collectors.
+# Setting type: Boolean
+# Default value: true
+StackWaterCollectors = true
+
+## Allow stacking in Gas Extractors.
+# Setting type: Boolean
+# Default value: true
+StackGasExtractors = true
+
+## Allow stacking in Beehives.
+# Setting type: Boolean
+# Default value: true
+StackBeehives = true
+
+## Allow stacking in Biodomes.
+# Setting type: Boolean
+# Default value: true
+StackBiodomes = true
+
+## Allow stacking in AutoCrafters.
+# Setting type: Boolean
+# Default value: true
+StackAutoCrafter = true
+
+## Allow stacking in Drone Stations.
+# Setting type: Boolean
+# Default value: true
+StackDroneStation = true
+
+## Workaround for the limited vanilla network buffers and too big stack sizes.
+# Setting type: Int32
+# Default value: 1024
+NetworkBufferScaling = 1024
 ```
+</details>
 
 ## (Perf) Load Inventories Faster
 
@@ -735,6 +864,8 @@ None.
 
 ## (Fix) Unbrick Save
 
+:warning: **Discontinued**
+
 The mod prevents the game from crashing in case the save contains an unplaceable object (often added by 3rd party mods).
 
 Current fixes:
@@ -753,12 +884,12 @@ None.
 A mod that hosts the unofficial patches for the game. Eventually, these patches may end up becoming vanilla fixes.
 
 Current fixes:
-- Scroll the File List screen from whereever the mouse is currently at.
-- Remove the dev-branch nagging screen.
-- Prevent a silent crash when trying to place items on water but on an invalid position.
-- Prevent a silent crash with butterfly flock management upon loading a save
-- Prevent a silent crash with grabable vegetables upon quitting to the main menu.
-
+- Fix for the mouse scroll not working in the world selection menu.
+- Fix for the silent crashes caused by missing label codes used in translating UI.
+- Fix for the crashes when loading a save created on a machine with different locale.
+- Fix for loading color information when a save was created on a machine with different locale.
+- Fix for a silent crash related to the options screen dropdowns.
+- Fix for a silent crash with highlighted objects when quitting a world. 
 
 ### Configuration
 
@@ -779,7 +910,7 @@ Why does it have a helmet? She dislikes your atmosphere.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.featspacecows.cfg`
+<details><summary> akarnokd.theplanetcraftermods.featspacecows.cfg </summary>
 
 ```
 [General]
@@ -794,7 +925,7 @@ Enabled = true
 # Default value: false
 DebugMode = false
 ```
-
+</details>
 
 
 ## (Perf) Reduce Save Size
@@ -830,7 +961,7 @@ Files are saved based on the name of your world plus a timestamp:
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.saveautobackup.cfg`
+<details><summary> akarnokd.theplanetcraftermods.saveautobackup.cfg </summary>
 
 ```
 [General]
@@ -861,6 +992,7 @@ KeepAge = 0
 # Default value: true
 Async = true
 ```
+</details>
 
 ## (Save) Auto Save
 
@@ -869,7 +1001,7 @@ Saves the game automatically. You can configure the save period via the config f
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.saveautosave.cfg`
+<details><summary> akarnokd.theplanetcraftermods.saveautosave.cfg </summary>
 
 ```
 [General]
@@ -879,6 +1011,7 @@ Saves the game automatically. You can configure the save period via the config f
 # Default value: 5
 SaveDelay = 5
 ```
+</details>
 
 ## (UI) Customize Inventory Sort Order
 
@@ -886,7 +1019,7 @@ Specify the order of items when clicking on the sort all button in inventories.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uicustominventorysortall.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uicustominventorysortall.cfg </summary>
 
 ```
 [General]
@@ -896,6 +1029,7 @@ Specify the order of items when clicking on the sort all button in inventories.
 # Default value: OxygenCapsule1,WaterBottle1,astrofood
 Preference = OxygenCapsule1,WaterBottle1,astrofood
 ```
+</details>
 
 ## (UI) Prevent Accidental Deconstruct
 
@@ -906,7 +1040,7 @@ The accessibility key is a vanilla feature, configurable in the game's settings 
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uideconstructpreventaccidental.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uideconstructpreventaccidental.cfg </summary>
 
 ```
 [General]
@@ -916,9 +1050,12 @@ The accessibility key is a vanilla feature, configurable in the game's settings 
 # Default value: true
 Enabled = true
 ```
+</details>
 
 
 ## (UI) Don't Close Craft Window
+
+:warning: **Discontinued**
 
 When crafting an item, <kbd>Right Click</kbd> to not close the crafting window.
 
@@ -971,7 +1108,7 @@ Multi-build is allowed by holding <kbd>CTRL</kbd> while clicking to build someth
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uihotbar.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uihotbar.cfg </summary>
 
 ```
 [General]
@@ -990,7 +1127,14 @@ FontSize = 20
 # Setting type: Int32
 # Default value: 40
 SlotBottom = 40
+
+## Enable debug mode logging? (Chatty!)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
 ```
+</details>
 
 ## (UI) Inventory Move Multiple Items
 
@@ -1003,7 +1147,7 @@ When transferring items between the player backpack and any container,
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uiinventorymovemultiple.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uiinventorymovemultiple.cfg </summary>
 
 ```
 [General]
@@ -1018,6 +1162,7 @@ MoveFewAmount = 5
 # Default value: 50
 MoveManyAmount = 50
 ```
+</details>
 
 ## (UI) Overview Panel
 
@@ -1025,7 +1170,7 @@ Pressing the <kbd>F1</kbd> (configurable) shows an overview panel with the curre
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uioverviewpanel.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uioverviewpanel.cfg </summary>
 
 ```
 [General]
@@ -1040,6 +1185,7 @@ FontSize = 19
 # Default value: F1
 Key = F1
 ```
+</details>
 
 ## (UI) Show Consumable Counts
 
@@ -1048,7 +1194,7 @@ the player has in its inventory.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uishowconsumablecount.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uishowconsumablecount.cfg </summary>
 
 ```
 [General]
@@ -1058,6 +1204,7 @@ the player has in its inventory.
 # Default value: 20
 FontSize = 20
 ```
+</details>
 
 ## (UI) Show Container Content Info
 
@@ -1066,6 +1213,11 @@ items are in there, the capacity of the container and the very first item type.
 (Pro tip: store different types of items in different containers)
 
 Example: `Open Container [ 5 / 30 ] Cobalt`
+
+If the *(Cheat) Inventory Stacking* mod is also installed and looking at a stackable container, the mod will show
+the slot usage and the total number of items vs capacity.
+
+Example: `Open Container [ 5 / 30 (50 / 300) ] Cobalt`
 
 ### Configuration
 
@@ -1078,7 +1230,7 @@ and how many of the same item is now in your inventory.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uishowgrabnminecount.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uishowgrabnminecount.cfg </summary>
 
 ```
 [General]
@@ -1088,6 +1240,7 @@ and how many of the same item is now in your inventory.
 # Default value: true
 Enabled = true
 ```
+</details>
 
 
 ## (UI) Show Player Inventory Counts
@@ -1098,6 +1251,11 @@ how many items can be added to it.
 
 Example: `800,0,100:4:60   <[  5  /  30  (  -25  )]>`
 
+If the *(Cheat) Inventory Stacking* mod is also installed and backpack stacking is enabled, the mod will show
+the slot usage and the total number of items vs capacity.
+
+Example: `Open Container [ 5 / 30 (50 / 300)] Cobalt`
+
 ### Configuration
 
 None.
@@ -1105,9 +1263,9 @@ None.
 ## (UI) Show Player Tooltip Item Count
 
 When in an inventory or build screen, in the tooltip of an item, show the number of items of the same
-type in the player's backpack.
+type in the player's backpack and how many such items can be crafted from the backpack if possible.
 
-Example: `Cobalt x 5`
+Example: `Cobalt x 5`, `Water Bottle x 5 < 10 >`.
 
 ### Configuration
 
@@ -1141,7 +1299,7 @@ Shows the current multitool mode as text and icon on the 2D hud. Useful when run
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uishowmultitoolmode.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uishowmultitoolmode.cfg </summary>
 
 ```
 [General]
@@ -1186,6 +1344,7 @@ Bottom = 30
 # Default value: 10
 Right = 10
 ```
+</details>
 
 ## (UI) Pin Recipe to Screen
 
@@ -1202,7 +1361,7 @@ Note that pinned recipes can't be saved currently as it requires save modding.
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uipinrecipe.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uipinrecipe.cfg </summary>
 
 ```cs
 [General]
@@ -1227,6 +1386,7 @@ PanelTop = 150
 # Default value: C
 ClearKey = C
 ```
+</details>
 
 ## (UI) Beacon Text
 
@@ -1237,31 +1397,52 @@ Use <kbd>B</kbd> (configurable) to toggle between showing no text, just the titl
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uibeacontext`
+<details><summary> akarnokd.theplanetcraftermods.uibeacontext </summary>
 
 ```
 [General]
 
-## The font size
+## The font size.
 # Setting type: Int32
 # Default value: 20
 FontSize = 20
 
-## Display: 0 - no text no distance, 1 - distance only, 2 - text only, 3 - distance + text
+## Display: 0 - no text no distance, 1 - distance only, 2 - text only, 3 - distance + text.
 # Setting type: Int32
 # Default value: 3
 DisplayMode = 3
 
-## The toggle key
+## The toggle key for changing the display mode.
 # Setting type: String
 # Default value: B
-DisplayModeToggleKey = B
+DisplayModeToggleKey = <Keyboard>/B
+
+## Show the distance above the beacon hexagon if true, below if false
+# Setting type: Boolean
+# Default value: true
+ShowDistanceOnTop = true
+
+## If true, the vanilla beacon text is hidden and replaced by this mod's label
+# Setting type: Boolean
+# Default value: true
+HideVanillaLabel = true
+
+## Enable debug logging? Chatty!
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+## The built-in font name, including its extesion.
+# Setting type: String
+# Default value: Arial.ttf
+Font = Arial.ttf
 ```
+</details>
 
 
 ## (UI) Craft Equipment Inplace
 
-:warning: Discontinued. Now part of the vanilla. :warning:
+:warning: **Discontinued. Now part of the vanilla.** :warning:
 
 When crafting upgrades to equimpent currently equipped, the newer equipment
 will be replaced inplace. This avoids loosing backpack capacity or equipment capacity
@@ -1368,7 +1549,8 @@ Only diagnostic options. Not relevant for the player.
 
 Patches in labels and enables switching to Czech ("") in the game's options screen. Note that some labels do not change when switching to Czech the first time. This is a bug in the vanilla game's UI and can be resolved by restarting the game.
 
-The translation was kindly provided by **Odo** (Discord: Odo#3718).
+- The translation was kindly provided by **Odo** (Discord: Odo#3718).
+- Further translation by **carly933** from NexusMods forum.
 
 :information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Czech myself.
 
@@ -1427,6 +1609,19 @@ The translation was kindly provided by Annika on the Official Discord of the gam
 
 Only diagnostic options. Not relevant for the player.
 
+# (UI) Korean Translation
+
+Patches in labels and enables switching to Korean ("한국어") in the game's options screen. Note that some labels do not change when switching to Korean the first time. This is a bug in the vanilla game's UI and can be resolved by restarting the game.
+
+The translation was kindly provided by Korean fans on the Official Discord of the game.
+
+:information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Korean myself.
+
+### Configuration
+
+Only diagnostic options. Not relevant for the player.
+
+
 ## (UI) Telemetry Font Sizer
 
 Allows modifying the font size on the bottom left (coordinates) and bottom right (version, framerate) telemetry text display.
@@ -1474,9 +1669,10 @@ Currently, the following shortcuts are supported:
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.uimenushortcutkeys.cfg`
+<details><summary> akarnokd.theplanetcraftermods.uimenushortcutkeys.cfg </summary>
 
 ```
+
 [General]
 
 ## The font size
@@ -1486,24 +1682,30 @@ FontSize = 20
 
 ## Toggle the tier-filter microchip's effect in the build screen
 # Setting type: String
-# Default value: F
+# Default value: <Keyboard>/F
 BuildToggleFilter = <Keyboard>/F
 
 ## Take everything from the currently open container
 # Setting type: String
-# Default value: R
+# Default value: <Keyboard>/R
 ContainerTakeAll = <Keyboard>/R
 
 ## Sort the player's inventory
 # Setting type: String
-# Default value: G
+# Default value: <Keyboard>/G
 SortPlayerInventory = <Keyboard>/G
 
 ## Sort the other inventory
 # Setting type: String
-# Default value: T
+# Default value: <Keyboard>/T
 SortOtherInventory = <Keyboard>/T
+
+## Turn this true to see log messages.
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
 ```
+</details>
 
 ## (Feat) Command Console
 
@@ -1516,10 +1718,11 @@ Type in `/help` to see a list of commands. Type `/help [name]` to show a short d
 Notable commands:
 - `/tp` - teleport
 - `/spawn` - add an item to your inventory
+- `/build` - start constructing a building or machine
 
 ### Configuration
 
-`akarnokd.theplanetcraftermods.featcommandconsole.cfg`
+<details><summary> akarnokd.theplanetcraftermods.featcommandconsole.cfg </summary>
 
 ```
 [General]
@@ -1532,7 +1735,7 @@ Enabled = true
 ## Enable the detailed logging of this mod
 # Setting type: Boolean
 # Default value: false
-DebugMode = true
+DebugMode = false
 
 ## Key to open the console
 # Setting type: String
@@ -1542,12 +1745,12 @@ ToggleKey = <Keyboard>/enter
 ## Console window's position relative to the top of the screen.
 # Setting type: Int32
 # Default value: 200
-ConsoleTop = 100
+ConsoleTop = 200
 
 ## Console window's position relative to the left of the screen.
 # Setting type: Int32
 # Default value: 300
-ConsoleLeft = 400
+ConsoleLeft = 300
 
 ## Console window's position relative to the right of the screen.
 # Setting type: Int32
@@ -1563,9 +1766,22 @@ ConsoleBottom = 200
 # Setting type: Int32
 # Default value: 20
 FontSize = 20
+
+## The font name in the console
+# Setting type: String
+# Default value: arial.ttf
+FontName = arial.ttf
+
+## How transparent the console background should be (0..1).
+# Setting type: Single
+# Default value: 0.98
+Transparency = 0.98
 ```
+</details>
 
 ## (Feat) Multiplayer
+
+:warning: **Discontinued**
 
 [See the wiki](https://github.com/akarnokd/ThePlanetCrafterMods/wiki/%28Feat%29-Multiplayer)
 
@@ -1665,6 +1881,8 @@ Toggle_Auto_Move_Key = CapsLock
 
 ## (Lathrey) Improve Performance
 
+:warning: **Discontinued**
+
 Disable lights and particle effects on a configurable set of buildings.
 
 :warning: This mod runs in a different namespace thus it can't pick up your old configuration.
@@ -1746,49 +1964,98 @@ CustomDepositAliases = Iron:*Common,Magnesium:*Common,Cobalt:*Common;Aluminium:*
 
 <details><summary>List of identifiers (case sensitive)</summary>
 
- - AirFilter1, Algae1Growable, Algae1Seed, Alloy, Aluminium
- - astrofood, astrofood2, Backpack1, Backpack2, Backpack3
- - Backpack4, Backpack5, Bacteria1, Bee1Hatched, Bee1Larvae
- - Bioplastic1, BlueprintT1, BootsSpeed1, BootsSpeed2, BootsSpeed3
- - Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae, Butterfly12Hatched
- - Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched, Butterfly14Larvae
- - Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae, Butterfly17Hatched
- - Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly1Hatched, Butterfly1Larvae
- - Butterfly2Hatched, Butterfly2Larvae, Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched
- - Butterfly4Larvae, Butterfly5Hatched, Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae
- - Butterfly7Hatched, Butterfly7Larvae, Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched
- - Butterfly9Larvae, CircuitBoard1, Cobalt, CookCake1, CookChocolate
- - CookCocoaGrowable, CookCocoaSeed, CookCookie1, CookCroissant, CookFlour
- - CookWheatGrowable, CookWheatSeed, Drone1, EquipmentIncrease1, EquipmentIncrease2
- - EquipmentIncrease3, FabricBlue, Fertilizer1, Fertilizer2, Firefly1Hatched
- - Fish10Eggs, Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish1Eggs
- - Fish1Hatched, Fish2Eggs, Fish2Hatched, Fish3Eggs, Fish3Hatched
- - Fish4Eggs, Fish4Hatched, Fish5Eggs, Fish5Hatched, Fish6Eggs
- - Fish6Hatched, Fish7Eggs, Fish7Hatched, Fish8Eggs, Fish8Hatched
- - Fish9Eggs, Fish9Hatched, FusionEnergyCell, honey, HudChipCleanConstruction
- - HudCompass, ice, Iridium, Iron, Jetpack1
- - Jetpack2, Jetpack3, LarvaeBase1, LarvaeBase2, LarvaeBase3
- - Magnesium, MethanCapsule1, MultiBuild, MultiDeconstruct, MultiToolDeconstruct2
- - MultiToolLight, MultiToolLight2, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
- - MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, NitrogenCapsule1
- - Osmium, OxygenCapsule1, OxygenTank1, OxygenTank2, OxygenTank3
- - OxygenTank4, Phytoplankton1, Phytoplankton2, Phytoplankton3, Phytoplankton4
- - PulsarQuartz, RedPowder1, RocketBiomass1, RocketDrones1, RocketHeat1
- - RocketInformations1, RocketInsects1, RocketMap1, RocketMap2, RocketMap3
- - RocketMap4, RocketOxygen1, RocketPressure1, RocketReactor, Rod-alloy
- - Rod-iridium, Rod-osmium, Rod-uranium, Seed0, Seed0Growable
- - Seed1, Seed1Growable, Seed2, Seed2Growable, Seed3
- - Seed3Growable, Seed4, Seed4Growable, Seed5, Seed5Growable
- - Seed6, Seed6Growable, SeedGold, SeedGoldGrowable, Silicon
- - Silk, SilkWorm, Sulfur, Titanium, Tree0Growable
- - Tree0Seed, Tree1Growable, Tree1Seed, Tree2Growable, Tree2Seed
- - Tree3Growable, Tree3Seed, Tree4Growable, Tree4Seed, Tree5Growable
- - Tree5Seed, Tree6Growable, Tree6Seed, Tree7Growable, Tree7Seed
- - Tree8Growable, Tree8Seed, Tree9Growable, Tree9Seed, TreeRoot
- - Uranim, Vegetable0Growable, Vegetable0Seed, Vegetable1Growable, Vegetable1Seed
- - Vegetable2Growable, Vegetable2Seed, Vegetable3Growable, Vegetable3Seed, WardenKey
- - WaterBottle1, WaterFilter, Zeolite
-
+- AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2
+- Alloy, Aluminium, AmphibiansFarm1, AnimalFeeder1, AnimalShelter1
+- Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1
+- Backpack1, Backpack2, Backpack3, Backpack4, Backpack5
+- Backpack6, Bacteria1, BalzarQuartz, Beacon, BedDouble
+- BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1
+- Beehive2, biodome, Biodome2, Biolab, Bioplastic1
+- BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintFireplace
+- BlueprintFlare, BlueprintFountainBig, BlueprintHologramGenerator, BlueprintLightBoxMedium, BlueprintPod9xA
+- BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintSolarQuartz
+- BlueprintT1, BlueprintTreePlanter, BlueprintWardensChip, BootsSpeed1, BootsSpeed2
+- BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae
+- Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched
+- Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae
+- Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched
+- Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae
+- Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched
+- Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae
+- Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1
+- ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1
+- CircuitBoard1, Cobalt, ComAntenna, Container1, Container2
+- Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed
+- CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1
+- CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2
+- DebrisContainer1, DeparturePlatform, Desktop1, Destructor1, DisplayCase
+- DNASequence, door, Drill0, Drill1, Drill2
+- Drill3, Drill4, Drone1, Drone2, DroneStation1
+- EndingExplosives, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4
+- EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3
+- EscapePod, Explosive, FabricBlue, Farm1, Fence
+- Fertilizer1, Fertilizer2, Firefly1Hatched, Fireplace, Fish10Eggs
+- Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched
+- Fish13Eggs, Fish13Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs
+- Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched
+- Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs
+- Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched
+- FishDisplayer1, FishFarm1, Flare, FloorGlass, FlowerPot1
+- Foundation, FountainBig, Frog10Eggs, Frog10Hatched, Frog11Eggs
+- Frog11Hatched, Frog12Eggs, Frog12Hatched, Frog13Eggs, Frog13Hatched
+- Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs
+- Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched
+- Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs
+- Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs
+- FrogGoldHatched, FuseEnergy1, FuseHeat1, FuseOxygen1, FusePlants1
+- FusePressure1, FuseProduction1, FuseTradeRocketsSpeed1, FusionEnergyCell, FusionGenerator1
+- GasExtractor1, GasExtractor2, GeneticExtractor1, GeneticManipulator1, GeneticSynthetizer1
+- GeneticTrait, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3
+- GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GoldenEffigie7, GoldenEffigie8
+- GrassSpreader1, Heater1, Heater2, Heater3, Heater4
+- Heater5, HologramGenerator, honey, HudChipCleanConstruction, HudCompass
+- ice, Incubator1, InsideLamp1, Iridium, Iron
+- Jetpack1, Jetpack2, Jetpack3, Jetpack4, Keycard1
+- Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform
+- LightBoxMedium, Magnesium, MagnetarQuartz, MapChip, MethanCapsule1
+- MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolDeconstruct3, MultiToolLight
+- MultiToolLight2, MultiToolLight3, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
+- MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4
+- NitrogenCapsule1, Obsidian, Optimizer1, Optimizer2, OreExtractor1
+- OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1
+- OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1
+- Phytoplankton2, Phytoplankton3, Phytoplankton4, PinChip1, PinChip2
+- PinChip3, pod, Pod4x, Pod9xA, Pod9xB
+- Pod9xC, podAngle, PortalGenerator1, ProceduralWreckContainer1, ProceduralWreckContainer2
+- ProceduralWreckSafe, PulsarQuartz, QuasarQuartz, RecyclingMachine, RedPowder1
+- RocketAnimals1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1
+- RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4
+- RocketOxygen1, RocketPressure1, RocketReactor, RockExplodable, Rod-alloy
+- Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy
+- ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage
+- ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable
+- Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4
+- Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable
+- SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign
+- Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric
+- Sofa, SofaAngle, SofaColored, SolarQuartz, SpaceMultiplierAnimals
+- SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants
+- SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1
+- TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium
+- TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed
+- Tree11Growable, Tree11Seed, Tree12Growable, Tree12Seed, Tree1Growable
+- Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed
+- Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable
+- Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed
+- Tree9Growable, Tree9Seed, TreePlanter, TreeRoot, TreeSpreader0
+- TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed
+- Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable
+- Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2
+- VegetubeOutside1, WallInside, wallplain, WardenAustel, WardenKey
+- WardensChip, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter
+- WaterLifeCollector1, window, WreckEntryLocked1, WreckEntryLocked2, WreckEntryLocked3
+- WreckEntryLocked4, WreckEntryLocked5, wreckpilar, WreckRockExplodable, WreckSafe
+- WreckServer, Zeolite
 </details>
 
 
@@ -1844,7 +2111,99 @@ Custom = Vegetable3Seed=2000,BlueprintT1=3000
 :information_source: Note that some items may still not show up due to unlock restrictions.
 
 <details><summary>List of item identifiers</summary>
-AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2, Alloy, Aluminium, AmphibiansFarm1, Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1, Backpack1, Backpack2, Backpack3, Backpack4, Backpack5, Bacteria1, Beacon, BedDouble, BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1, Beehive2, biodome, Biodome2, Biolab, Bioplastic1, BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintPod9xA, BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintT1, BootsSpeed1, BootsSpeed2, BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae, Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched, Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae, Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched, Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae, Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched, Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae, Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1, ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1, CircuitBoard1, Cobalt, ComAntenna, Container1, Container2, Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed, CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1, CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2, DebrisContainer1, Desktop1, Destructor1, DisplayCase, door, Drill0, Drill1, Drill2, Drill3, Drill4, Drone1, Drone2, DroneStation1, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4, EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3, EscapePod, FabricBlue, Farm1, Fence, Fertilizer1, Fertilizer2, Firefly1Hatched, Fish10Eggs, Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs, Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched, Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs, Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched, FishDisplayer1, FishFarm1, FloorGlass, FlowerPot1, Foundation, Frog10Eggs, Frog10Hatched, Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs, Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched, Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs, Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs, FrogGoldHatched, FusionEnergyCell, FusionGenerator1, GasExtractor1, GasExtractor2, GeneticManipulator1, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3, GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GrassSpreader1, Heater1, Heater2, Heater3, Heater4, Heater5, honey, HudChipCleanConstruction, HudCompass, ice, Incubator1, InsideLamp1, Iridium, Iron, Jetpack1, Jetpack2, Jetpack3, Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform, Magnesium, MethanCapsule1, MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolLight, MultiToolLight2, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3, MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4, NitrogenCapsule1, OreExtractor1, OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1, OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1, Phytoplankton2, Phytoplankton3, Phytoplankton4, pod, Pod4x, Pod9xA, Pod9xB, Pod9xC, podAngle, PulsarQuartz, RecyclingMachine, RedPowder1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1, RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4, RocketOxygen1, RocketPressure1, RocketReactor, Rod-alloy, Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy, ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage, ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable, Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4, Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable, SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign, Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric, Sofa, SofaAngle, SofaColored, SpaceMultiplierAnimals, SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants, SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1, TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium, TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed, Tree1Growable, Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed, Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable, Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed, Tree9Growable, Tree9Seed, TreeRoot, TreeSpreader0, TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed, Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable, Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2, VegetubeOutside1, wallplain, WardenAustel, WardenKey, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter, WaterLifeCollector1, window, wreckpilar, WreckServer, Zeolite, 
+
+- AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2
+- Alloy, Aluminium, AmphibiansFarm1, AnimalFeeder1, AnimalShelter1
+- Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1
+- Backpack1, Backpack2, Backpack3, Backpack4, Backpack5
+- Backpack6, Bacteria1, BalzarQuartz, Beacon, BedDouble
+- BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1
+- Beehive2, biodome, Biodome2, Biolab, Bioplastic1
+- BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintFireplace
+- BlueprintFlare, BlueprintFountainBig, BlueprintHologramGenerator, BlueprintLightBoxMedium, BlueprintPod9xA
+- BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintSolarQuartz
+- BlueprintT1, BlueprintTreePlanter, BlueprintWardensChip, BootsSpeed1, BootsSpeed2
+- BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae
+- Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched
+- Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae
+- Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched
+- Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae
+- Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched
+- Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae
+- Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1
+- ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1
+- CircuitBoard1, Cobalt, ComAntenna, Container1, Container2
+- Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed
+- CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1
+- CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2
+- DebrisContainer1, DeparturePlatform, Desktop1, Destructor1, DisplayCase
+- DNASequence, door, Drill0, Drill1, Drill2
+- Drill3, Drill4, Drone1, Drone2, DroneStation1
+- EndingExplosives, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4
+- EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3
+- EscapePod, Explosive, FabricBlue, Farm1, Fence
+- Fertilizer1, Fertilizer2, Firefly1Hatched, Fireplace, Fish10Eggs
+- Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched
+- Fish13Eggs, Fish13Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs
+- Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched
+- Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs
+- Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched
+- FishDisplayer1, FishFarm1, Flare, FloorGlass, FlowerPot1
+- Foundation, FountainBig, Frog10Eggs, Frog10Hatched, Frog11Eggs
+- Frog11Hatched, Frog12Eggs, Frog12Hatched, Frog13Eggs, Frog13Hatched
+- Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs
+- Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched
+- Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs
+- Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs
+- FrogGoldHatched, FuseEnergy1, FuseHeat1, FuseOxygen1, FusePlants1
+- FusePressure1, FuseProduction1, FuseTradeRocketsSpeed1, FusionEnergyCell, FusionGenerator1
+- GasExtractor1, GasExtractor2, GeneticExtractor1, GeneticManipulator1, GeneticSynthetizer1
+- GeneticTrait, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3
+- GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GoldenEffigie7, GoldenEffigie8
+- GrassSpreader1, Heater1, Heater2, Heater3, Heater4
+- Heater5, HologramGenerator, honey, HudChipCleanConstruction, HudCompass
+- ice, Incubator1, InsideLamp1, Iridium, Iron
+- Jetpack1, Jetpack2, Jetpack3, Jetpack4, Keycard1
+- Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform
+- LightBoxMedium, Magnesium, MagnetarQuartz, MapChip, MethanCapsule1
+- MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolDeconstruct3, MultiToolLight
+- MultiToolLight2, MultiToolLight3, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
+- MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4
+- NitrogenCapsule1, Obsidian, Optimizer1, Optimizer2, OreExtractor1
+- OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1
+- OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1
+- Phytoplankton2, Phytoplankton3, Phytoplankton4, PinChip1, PinChip2
+- PinChip3, pod, Pod4x, Pod9xA, Pod9xB
+- Pod9xC, podAngle, PortalGenerator1, ProceduralWreckContainer1, ProceduralWreckContainer2
+- ProceduralWreckSafe, PulsarQuartz, QuasarQuartz, RecyclingMachine, RedPowder1
+- RocketAnimals1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1
+- RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4
+- RocketOxygen1, RocketPressure1, RocketReactor, RockExplodable, Rod-alloy
+- Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy
+- ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage
+- ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable
+- Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4
+- Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable
+- SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign
+- Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric
+- Sofa, SofaAngle, SofaColored, SolarQuartz, SpaceMultiplierAnimals
+- SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants
+- SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1
+- TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium
+- TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed
+- Tree11Growable, Tree11Seed, Tree12Growable, Tree12Seed, Tree1Growable
+- Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed
+- Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable
+- Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed
+- Tree9Growable, Tree9Seed, TreePlanter, TreeRoot, TreeSpreader0
+- TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed
+- Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable
+- Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2
+- VegetubeOutside1, WallInside, wallplain, WardenAustel, WardenKey
+- WardensChip, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter
+- WaterLifeCollector1, window, WreckEntryLocked1, WreckEntryLocked2, WreckEntryLocked3
+- WreckEntryLocked4, WreckEntryLocked5, wreckpilar, WreckRockExplodable, WreckSafe
+- WreckServer, Zeolite
 </details>
 
 
@@ -1863,3 +2222,806 @@ Custom = Vegetable0Seed=500,Vegetable1Seed=1000,Vegetable2Seed=1500,Vegetable3Se
 ```
 </details>
 
+## (Cheat) Wreck Map
+
+A very basic map-as-you-go style minimap for procedural wrecks. Includes persistence. Not many POIs supported yet: green cells indicate ladders.
+
+- Toggle the map with <kbd>L</kbd>. To clear the map, press <kbd>Ctrl+L</kbd>.
+- View the levels above via <kbd>PgUp</kbd> or below via <kbd>PgDown</kbd>.
+
+
+Known limitations:
+- flickering during walking,
+- character indicator is not smooth,
+- using ladders doesn't update the level map unless stepping away,
+- entrance/chest room has no map.
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatwreckmap.cfg</summary>
+
+```
+[General]
+
+## Mod is enabled
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## The map is currently visible
+# Setting type: Boolean
+# Default value: true
+MapVisible = true
+
+## Mod is enabled
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+## The basic color of a cell in ARGB values in range 0..255
+# Setting type: String
+# Default value: 255,255,255,0
+BaseColor = 255,255,255,0
+
+## The basic color of emptyness in ARGB values in range 0..255
+# Setting type: String
+# Default value: 127,25,25,25
+EmptyColor = 127,25,25,25
+
+## The basic color of ladders in ARGB values in range 0..255
+# Setting type: String
+# Default value: 255,0,255,0
+LadderColor = 255,0,255,0
+
+## The map width in pixels
+# Setting type: Int32
+# Default value: 750
+MapWidth = 750
+
+## The map height in pixels
+# Setting type: Int32
+# Default value: 750
+MapHeight = 750
+
+## The font size
+# Setting type: Int32
+# Default value: 30
+FontSize = 30
+```
+</details>
+
+## (Save) Quick Save
+
+Saves the game by pressing the <kbd>F5</kbd> key (configurable).
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.savequicksave.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## The shortcut key for quick saving.
+# Setting type: String
+# Default value: F5
+ShortcutKey = <Keyboard>/F5
+```
+</details>
+
+## (Perf) Startup Performance
+
+Speeds up the loading of the main menu and the list of worlds, especially with a lot of worlds or very large worlds.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.perfstartup.cfg</summary>
+
+```
+[General]
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+```
+</details>
+
+## (UI) Continue
+
+Displays a *Continue* button in the main menu and shows the name, Ti and date of very last save the user played, if any.
+
+### Configuration
+
+None.
+
+## (UI) Mod Config Menu
+
+Adds a Mods menu to the ingame options dialog which lists all installed mods and their BepInEx configuration options in an editable fashion.
+
+:warning: Note that some configuration changes may not take effect until the current world is reloaded or the game is completely restarted. When in doubt, restart the game after such change.
+
+- Hover over an entry to show a tooltip for that configuration option.
+- Filter for mods or parameters in the bottom input box. Example akarnokd cheat - filter for any mod whose name contains akarnokd and cheat, ui #enabled - filter for those mods whose name contains ui and has a parameter named enabled.
+- Some changes for certain mods may require restarting the game.
+- Click on the Open .cfg button (purple) to show the specific config file in the system default text editor.
+
+### Configuration
+
+None.
+
+## (UI) Show Crash
+
+Monitors the game's log file for signs of silent crashes, then displays a red warning overlay every time a new crash was discovered, including some crash details.
+
+:information_source: This mod is mainly for development and testing purposes so bugs and crashes don't go unnoticed.
+
+Press <kbd>F11</kbd> to toggle the monitoring on/off (in case of a flood of errors).
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.uishowcrash.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## The font size
+# Setting type: Int32
+# Default value: 20
+FontSize = 20
+
+## Press F11 to generate a crash log entry.
+# Setting type: Boolean
+# Default value: false
+TestMode = false
+```
+</details>
+
+## (UI) Stack In-Range List
+
+Display the nearby chests and ground items in a stacked way when looking at an Auto-Crafter's screen.
+
+For example, having 13 chests nearby will show only one chest with the number 13 over it.
+
+The number is likely blocking out the item's icon so hover over them via the mouse to see what exactly that item type is.
+
+It is possible to enable such stacking when looking at the vanilla pinned recipes and portal quartz requirements, but these are disabled by default to avoid confusion.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.uistackinrangelist.cfg</summary>
+
+```
+## Font size
+# Setting type: Int32
+# Default value: 15
+FontSize = 15
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Stack the ingredients of the pinned recipes?
+# Setting type: Boolean
+# Default value: false
+StackPins = false
+
+## Stack the requirements for opening a portal?
+# Setting type: Boolean
+# Default value: false
+StackPortals = false
+```
+</details>
+
+## (Cheat) Auto Store
+
+Automatically store the contents of the player's backpack into nearby containers, distributing each item based on
+which nearby container has already such an item.
+
+Press <kbd>K</kbd> (configurable) to trigger the storing procedure while no dialog is open. 
+Notifications about the results are shown on the left and bottom of the screen.
+
+:information_source: This mod is the remake of the functionality of Aedenthorn's Quick Store mod.
+
+By default, every type of item may be stored. You can narrow it down to only specific item types by
+configuring the `IncludeList`. In contrast, if you want only certain items to be not stored, specify
+them in the `ExcludeList`. The `IncludeList` takes precedence. Both take a comma-separated list of
+case-sensitive item identifiers (see below).
+
+```
+IncludeList=Uranim,ice
+```
+
+The original aedenthorn mod stored items next to the same items already in the containers. However, if the container got emptied, this link got broken. You can now use the same method like with other remote deposit mods of mine to designate containers by naming them.
+
+You can toggle this behavior by setting `storeByName` true. You can turn the original behavior off via `storeBySame`. You can have both on.
+
+The proximity, include and exclude settings still apply to this mode.
+
+To designate a container for an item, name it by the item's identifier: `!Iron`. This mod uses the exclamation point by default to prefix the item identifier, to distinguish it from the other remote deposit mods which use star. You can change this prefix via `storeByNameMarker`.
+
+You can also apply aliases to either sorten the name required and/or to target the same container with multiple items. Set the `storeByNameAliases` to a comma separated list of itemId (case sensitive) - semicolon - name (case insensitive). Example:
+
+`Iron:junk,ice:junk,Uranim:precious`
+
+You can specify a comma separated list item ids (case sensitive) and counts to always keep in the backpack via `KeepList`:
+
+`KeepList = WaterBottle1:5,OxygenCapsule1:3`
+
+You can now configure the mod to deposit based on the logistics demand or supply settings of the container by enabling `storeByDemand` and `storeBySupply` respectively.
+
+The precedence of the settings is as follows: 1. by same, 2. by name, 3. by demand, 4. by supply.
+
+<details><summary>List of item identifiers</summary>
+
+- AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2
+- Alloy, Aluminium, AmphibiansFarm1, AnimalFeeder1, AnimalShelter1
+- Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1
+- Backpack1, Backpack2, Backpack3, Backpack4, Backpack5
+- Backpack6, Bacteria1, BalzarQuartz, Beacon, BedDouble
+- BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1
+- Beehive2, biodome, Biodome2, Biolab, Bioplastic1
+- BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintFireplace
+- BlueprintFlare, BlueprintFountainBig, BlueprintHologramGenerator, BlueprintLightBoxMedium, BlueprintPod9xA
+- BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintSolarQuartz
+- BlueprintT1, BlueprintTreePlanter, BlueprintWardensChip, BootsSpeed1, BootsSpeed2
+- BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae
+- Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched
+- Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae
+- Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched
+- Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae
+- Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched
+- Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae
+- Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1
+- ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1
+- CircuitBoard1, Cobalt, ComAntenna, Container1, Container2
+- Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed
+- CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1
+- CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2
+- DebrisContainer1, DeparturePlatform, Desktop1, Destructor1, DisplayCase
+- DNASequence, door, Drill0, Drill1, Drill2
+- Drill3, Drill4, Drone1, Drone2, DroneStation1
+- EndingExplosives, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4
+- EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3
+- EscapePod, Explosive, FabricBlue, Farm1, Fence
+- Fertilizer1, Fertilizer2, Firefly1Hatched, Fireplace, Fish10Eggs
+- Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched
+- Fish13Eggs, Fish13Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs
+- Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched
+- Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs
+- Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched
+- FishDisplayer1, FishFarm1, Flare, FloorGlass, FlowerPot1
+- Foundation, FountainBig, Frog10Eggs, Frog10Hatched, Frog11Eggs
+- Frog11Hatched, Frog12Eggs, Frog12Hatched, Frog13Eggs, Frog13Hatched
+- Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs
+- Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched
+- Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs
+- Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs
+- FrogGoldHatched, FuseEnergy1, FuseHeat1, FuseOxygen1, FusePlants1
+- FusePressure1, FuseProduction1, FuseTradeRocketsSpeed1, FusionEnergyCell, FusionGenerator1
+- GasExtractor1, GasExtractor2, GeneticExtractor1, GeneticManipulator1, GeneticSynthetizer1
+- GeneticTrait, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3
+- GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GoldenEffigie7, GoldenEffigie8
+- GrassSpreader1, Heater1, Heater2, Heater3, Heater4
+- Heater5, HologramGenerator, honey, HudChipCleanConstruction, HudCompass
+- ice, Incubator1, InsideLamp1, Iridium, Iron
+- Jetpack1, Jetpack2, Jetpack3, Jetpack4, Keycard1
+- Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform
+- LightBoxMedium, Magnesium, MagnetarQuartz, MapChip, MethanCapsule1
+- MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolDeconstruct3, MultiToolLight
+- MultiToolLight2, MultiToolLight3, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
+- MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4
+- NitrogenCapsule1, Obsidian, Optimizer1, Optimizer2, OreExtractor1
+- OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1
+- OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1
+- Phytoplankton2, Phytoplankton3, Phytoplankton4, PinChip1, PinChip2
+- PinChip3, pod, Pod4x, Pod9xA, Pod9xB
+- Pod9xC, podAngle, PortalGenerator1, ProceduralWreckContainer1, ProceduralWreckContainer2
+- ProceduralWreckSafe, PulsarQuartz, QuasarQuartz, RecyclingMachine, RedPowder1
+- RocketAnimals1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1
+- RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4
+- RocketOxygen1, RocketPressure1, RocketReactor, RockExplodable, Rod-alloy
+- Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy
+- ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage
+- ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable
+- Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4
+- Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable
+- SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign
+- Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric
+- Sofa, SofaAngle, SofaColored, SolarQuartz, SpaceMultiplierAnimals
+- SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants
+- SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1
+- TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium
+- TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed
+- Tree11Growable, Tree11Seed, Tree12Growable, Tree12Seed, Tree1Growable
+- Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed
+- Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable
+- Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed
+- Tree9Growable, Tree9Seed, TreePlanter, TreeRoot, TreeSpreader0
+- TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed
+- Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable
+- Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2
+- VegetubeOutside1, WallInside, wallplain, WardenAustel, WardenKey
+- WardensChip, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter
+- WaterLifeCollector1, window, WreckEntryLocked1, WreckEntryLocked2, WreckEntryLocked3
+- WreckEntryLocked4, WreckEntryLocked5, wreckpilar, WreckRockExplodable, WreckSafe
+- WreckServer, Zeolite
+</details>
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatautostore.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging? Chatty!
+# Setting type: Boolean
+# Default value: false
+DebugMode = true
+
+## The range to look for containers within.
+# Setting type: Int32
+# Default value: 20
+Range = 20
+
+## The comma separated list of case-sensitive item ids to include only. If empty, all items are considered except the those listed in ExcludeList.
+# Setting type: String
+# Default value: 
+IncludeList = 
+
+## The comma separated list of case-sensitive item ids to exclude. Only considered if IncludeList is empty.
+# Setting type: String
+# Default value: 
+ExcludeList = 
+
+## The input action shortcut to trigger the storing of items.
+# Setting type: String
+# Default value: <Keyboard>/K
+Key = <Keyboard>/K
+
+## Original behavior, store next to the same already stored items.
+# Setting type: Boolean
+# Default value: true
+StoreBySame = true
+
+## Store into containers whose naming matches the item id, such as !Iron for example. Use StoreByNameAliases to override individual items.
+# Setting type: Boolean
+# Default value: false
+StoreByName = false
+
+## A comma separated list of itemId:name elements, denoting which item should find which container containing that name. The itemId is case sensitive, the name is case-insensitive. Example: Iron:A,Uranim:B,ice:C
+# Setting type: String
+# Default value: 
+StoreByNameAliases = Iron:abc
+
+## The prefix for when using default item ids for storage naming. To disambiguate with other remote deposit mods that use star.
+# Setting type: String
+# Default value: !
+StoreByNameMarker = !
+
+## A comma separated list of itemId:amount elements to keep a minimum amount of that item. itemId is case sensitive. Example: WaterBottle1:5,OxygenCapsule1:5 to keep 5 water bottles and oxygen capsules in the backpack
+# Setting type: String
+# Default value: 
+KeepList = 
+```
+</details>
+
+## (Cheat) Auto Grab And Mine
+
+Automatically grabs or mines items from the world within a configurable range.
+
+Toggle the automatic scanning via <kbd>V</kbd>. 
+Press <kbd>Ctrl+V</kbd> to perform a single scan without activating/deactivating the automatic scanning.
+
+By default, food and algae are not grabbed to avoid problems with growers and drone supply.
+You can enable/disable categories of items via the config file.
+
+By default, every grabable or minable object may be taken. You can narrow it down to only specific item types by
+configuring the `IncludeList`. In contrast, if you want only certain items to be not taken, specify
+them in the `ExcludeList`. The `IncludeList` takes precedence. Both take a comma-separated list of
+case-sensitive item identifiers (see below).
+
+
+```
+IncludeList=Uranim,ice
+```
+
+<details><summary>List of item identifiers</summary>
+
+- AirFilter1, Algae1Growable, Algae1Seed, AlgaeGenerator1, AlgaeGenerator2
+- Alloy, Aluminium, AmphibiansFarm1, AnimalFeeder1, AnimalShelter1
+- Aquarium1, Aquarium2, astrofood, astrofood2, AutoCrafter1
+- Backpack1, Backpack2, Backpack3, Backpack4, Backpack5
+- Backpack6, Bacteria1, BalzarQuartz, Beacon, BedDouble
+- BedDoubleColored, BedSimple, Bee1Hatched, Bee1Larvae, Beehive1
+- Beehive2, biodome, Biodome2, Biolab, Bioplastic1
+- BlueprintBedDoubleColored, BlueprintContainer3, BlueprintCookingStation, BlueprintDrone2, BlueprintFireplace
+- BlueprintFlare, BlueprintFountainBig, BlueprintHologramGenerator, BlueprintLightBoxMedium, BlueprintPod9xA
+- BlueprintPod9xB, BlueprintPod9xC, BlueprintSmartFabric, BlueprintSofaColored, BlueprintSolarQuartz
+- BlueprintT1, BlueprintTreePlanter, BlueprintWardensChip, BootsSpeed1, BootsSpeed2
+- BootsSpeed3, Butterfly10Hatched, Butterfly10Larvae, Butterfly11Hatched, Butterfly11Larvae
+- Butterfly12Hatched, Butterfly12Larvae, Butterfly13Hatched, Butterfly13Larvae, Butterfly14Hatched
+- Butterfly14Larvae, Butterfly15Hatched, Butterfly15Larvae, Butterfly16Hatched, Butterfly16Larvae
+- Butterfly17Hatched, Butterfly17Larvae, Butterfly18Hatched, Butterfly18Larvae, Butterfly19Hatched
+- Butterfly19Larvae, Butterfly1Hatched, Butterfly1Larvae, Butterfly2Hatched, Butterfly2Larvae
+- Butterfly3Hatched, Butterfly3Larvae, Butterfly4Hatched, Butterfly4Larvae, Butterfly5Hatched
+- Butterfly5Larvae, Butterfly6Hatched, Butterfly6Larvae, Butterfly7Hatched, Butterfly7Larvae
+- Butterfly8Hatched, Butterfly8Larvae, Butterfly9Hatched, Butterfly9Larvae, ButterflyDisplayer1
+- ButterflyDome1, ButterflyFarm1, ButterflyFarm2, canister, Chair1
+- CircuitBoard1, Cobalt, ComAntenna, Container1, Container2
+- Container3, CookCake1, CookChocolate, CookCocoaGrowable, CookCocoaSeed
+- CookCookie1, CookCroissant, CookFlour, CookingStation1, CookStew1
+- CookStewFish1, CookWheatGrowable, CookWheatSeed, CraftStation1, CraftStation2
+- DebrisContainer1, DeparturePlatform, Desktop1, Destructor1, DisplayCase
+- DNASequence, door, Drill0, Drill1, Drill2
+- Drill3, Drill4, Drone1, Drone2, DroneStation1
+- EndingExplosives, EnergyGenerator1, EnergyGenerator2, EnergyGenerator3, EnergyGenerator4
+- EnergyGenerator5, EnergyGenerator6, EquipmentIncrease1, EquipmentIncrease2, EquipmentIncrease3
+- EscapePod, Explosive, FabricBlue, Farm1, Fence
+- Fertilizer1, Fertilizer2, Firefly1Hatched, Fireplace, Fish10Eggs
+- Fish10Hatched, Fish11Eggs, Fish11Hatched, Fish12Eggs, Fish12Hatched
+- Fish13Eggs, Fish13Hatched, Fish1Eggs, Fish1Hatched, Fish2Eggs
+- Fish2Hatched, Fish3Eggs, Fish3Hatched, Fish4Eggs, Fish4Hatched
+- Fish5Eggs, Fish5Hatched, Fish6Eggs, Fish6Hatched, Fish7Eggs
+- Fish7Hatched, Fish8Eggs, Fish8Hatched, Fish9Eggs, Fish9Hatched
+- FishDisplayer1, FishFarm1, Flare, FloorGlass, FlowerPot1
+- Foundation, FountainBig, Frog10Eggs, Frog10Hatched, Frog11Eggs
+- Frog11Hatched, Frog12Eggs, Frog12Hatched, Frog13Eggs, Frog13Hatched
+- Frog1Eggs, Frog1Hatched, Frog2Eggs, Frog2Hatched, Frog3Eggs
+- Frog3Hatched, Frog4Eggs, Frog4Hatched, Frog5Eggs, Frog5Hatched
+- Frog6Eggs, Frog6Hatched, Frog7Eggs, Frog7Hatched, Frog8Eggs
+- Frog8Hatched, Frog9Eggs, Frog9Hatched, FrogDisplayer1, FrogGoldEggs
+- FrogGoldHatched, FuseEnergy1, FuseHeat1, FuseOxygen1, FusePlants1
+- FusePressure1, FuseProduction1, FuseTradeRocketsSpeed1, FusionEnergyCell, FusionGenerator1
+- GasExtractor1, GasExtractor2, GeneticExtractor1, GeneticManipulator1, GeneticSynthetizer1
+- GeneticTrait, GoldenContainer, GoldenEffigie1, GoldenEffigie2, GoldenEffigie3
+- GoldenEffigie4, GoldenEffigie5, GoldenEffigie6, GoldenEffigie7, GoldenEffigie8
+- GrassSpreader1, Heater1, Heater2, Heater3, Heater4
+- Heater5, HologramGenerator, honey, HudChipCleanConstruction, HudCompass
+- ice, Incubator1, InsideLamp1, Iridium, Iron
+- Jetpack1, Jetpack2, Jetpack3, Jetpack4, Keycard1
+- Ladder, LarvaeBase1, LarvaeBase2, LarvaeBase3, LaunchPlatform
+- LightBoxMedium, Magnesium, MagnetarQuartz, MapChip, MethanCapsule1
+- MultiBuild, MultiDeconstruct, MultiToolDeconstruct2, MultiToolDeconstruct3, MultiToolLight
+- MultiToolLight2, MultiToolLight3, MultiToolMineSpeed1, MultiToolMineSpeed2, MultiToolMineSpeed3
+- MultiToolMineSpeed4, Mutagen1, Mutagen2, Mutagen3, Mutagen4
+- NitrogenCapsule1, Obsidian, Optimizer1, Optimizer2, OreExtractor1
+- OreExtractor2, OreExtractor3, Osmium, OutsideLamp1, OxygenCapsule1
+- OxygenTank1, OxygenTank2, OxygenTank3, OxygenTank4, Phytoplankton1
+- Phytoplankton2, Phytoplankton3, Phytoplankton4, PinChip1, PinChip2
+- PinChip3, pod, Pod4x, Pod9xA, Pod9xB
+- Pod9xC, podAngle, PortalGenerator1, ProceduralWreckContainer1, ProceduralWreckContainer2
+- ProceduralWreckSafe, PulsarQuartz, QuasarQuartz, RecyclingMachine, RedPowder1
+- RocketAnimals1, RocketBiomass1, RocketDrones1, RocketHeat1, RocketInformations1
+- RocketInsects1, RocketMap1, RocketMap2, RocketMap3, RocketMap4
+- RocketOxygen1, RocketPressure1, RocketReactor, RockExplodable, Rod-alloy
+- Rod-iridium, Rod-osmium, Rod-uranium, ScreenBiomass, ScreenEnergy
+- ScreenMap1, ScreenMessage, ScreenRockets, ScreenTerraformation, ScreenTerraStage
+- ScreenUnlockables, Seed0, Seed0Growable, Seed1, Seed1Growable
+- Seed2, Seed2Growable, Seed3, Seed3Growable, Seed4
+- Seed4Growable, Seed5, Seed5Growable, Seed6, Seed6Growable
+- SeedGold, SeedGoldGrowable, SeedSpreader1, SeedSpreader2, Sign
+- Silicon, Silk, SilkGenerator, SilkWorm, SmartFabric
+- Sofa, SofaAngle, SofaColored, SolarQuartz, SpaceMultiplierAnimals
+- SpaceMultiplierBiomass, SpaceMultiplierHeat, SpaceMultiplierInsects, SpaceMultiplierOxygen, SpaceMultiplierPlants
+- SpaceMultiplierPressure, Stairs, Sulfur, TableSmall, Teleporter1
+- TerraTokens100, TerraTokens1000, TerraTokens500, TerraTokens5000, Titanium
+- TradePlatform1, Tree0Growable, Tree0Seed, Tree10Growable, Tree10Seed
+- Tree11Growable, Tree11Seed, Tree12Growable, Tree12Seed, Tree1Growable
+- Tree1Seed, Tree2Growable, Tree2Seed, Tree3Growable, Tree3Seed
+- Tree4Growable, Tree4Seed, Tree5Growable, Tree5Seed, Tree6Growable
+- Tree6Seed, Tree7Growable, Tree7Seed, Tree8Growable, Tree8Seed
+- Tree9Growable, Tree9Seed, TreePlanter, TreeRoot, TreeSpreader0
+- TreeSpreader1, TreeSpreader2, Uranim, Vegetable0Growable, Vegetable0Seed
+- Vegetable1Growable, Vegetable1Seed, Vegetable2Growable, Vegetable2Seed, Vegetable3Growable
+- Vegetable3Seed, VegetableGrower1, VegetableGrower2, Vegetube1, Vegetube2
+- VegetubeOutside1, WallInside, wallplain, WardenAustel, WardenKey
+- WardensChip, WaterBottle1, WaterCollector1, WaterCollector2, WaterFilter
+- WaterLifeCollector1, window, WreckEntryLocked1, WreckEntryLocked2, WreckEntryLocked3
+- WreckEntryLocked4, WreckEntryLocked5, wreckpilar, WreckRockExplodable, WreckSafe
+- WreckServer, Zeolite
+</details>
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatautograbandmine.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging? Chatty!
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+## The range to look for items within.
+# Setting type: Int32
+# Default value: 20
+Range = 20
+
+## The input action shortcut to toggle automatic scanning and taking.
+# Setting type: String
+# Default value: <Keyboard>/V
+Key = <Keyboard>/V
+
+## How often scan the surroundings for items go grab or mine. Seconds
+# Setting type: Int32
+# Default value: 3
+Period = 3
+
+## If true, the mod is actively scanning for items to take.
+# Setting type: Boolean
+# Default value: false
+Scanning = false
+
+## The comma separated list of case-sensitive item ids to include only. If empty, all items are considered except the those listed in ExcludeList.
+# Setting type: String
+# Default value: 
+IncludeList = 
+
+## The comma separated list of case-sensitive item ids to exclude. Only considered if IncludeList is empty.
+# Setting type: String
+# Default value: 
+ExcludeList = 
+
+## If true, nearby larvae can be grabbed. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: true
+Larvae = true
+
+## If true, nearby frog eggs can be grabbed. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: true
+FrogEggs = true
+
+## If true, nearby fish eggs can be grabbed. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: true
+FishEggs = true
+
+## If true, nearby food can be grabbed. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: false
+Food = false
+
+## If true, nearby algae can be grabbed. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: false
+Algae = false
+
+## If true, nearby minerals can be mined. Subject to Include/Exclude though.
+# Setting type: Boolean
+# Default value: true
+Minerals = true
+```
+</details>
+
+## (Cheat) Craft From Nearby Containers
+
+When manually crafting items in machines, crafting rockets, building buildings, the ingredients are checked and
+gathered from nearby containers in addition to the player's backpack.
+
+Enable/disable this proximity-based inventory usage via <kbd>Home</kbd> (configurable).
+
+:information_source: This mod is the remake of the functionality of Aedenthorn's *Craft From Containers* mod.
+
+Integration / Interoperation:
+
+- Tooltips get updated when hovering over the item or building in the craft/construct menus.
+- Vanilla pinned recipes get updated as getting in or out of range.
+- *(Cheat) Inventory Stacking* - service exchanges. **v1.0.0.90+**
+- *(UI) Pin Recipes* - the available and buildable counts displayed consider nearby inventories when enabled. **v1.0.0.23+**
+- *(UI) Hotbar* - the buildable counts consider nearby inventories when enabled. **v1.0.0.24+**
+- *(UI) Show Player Item Tooltip Count* - the buildable counts consider nearby inventories when enabled. **v1.0.0.9+**
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.cheatcraftfromnearbycontainers.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging? Chatty!
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+## The range to look for containers within.
+# Setting type: Int32
+# Default value: 20
+Range = 20
+
+## The input action shortcut toggle this mod on or off.
+# Setting type: String
+# Default value: <Keyboard>/Home
+Key = <Keyboard>/Home
+```
+</details>
+
+## (Misc) Customize Flashlight
+
+Change the color, range, angle and other properties of the player's flashlight - both T1 and T2.
+
+To reset to the game's default, disable the mod and restart the game.
+
+:information_source: This mod is the remake of the functionality of Aedenthorn's *Custom Flashlight* mod.
+
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.misccustomizeflashlight.cfg</summary>
+
+```
+[General]
+
+## Enable this mod
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Use color temperature.
+# Setting type: Boolean
+# Default value: false
+UseColorTemp = false
+
+## Flashlight color in ARGB hex format, no hashmark. Example: FFFFCC00
+# Setting type: String
+# Default value: FFFFF8E6
+Color = FFFF0000
+
+## Color temperature.
+# Setting type: Int32
+# Default value: 6570
+ColorTemp = 6570
+
+## Flashlight angle.
+# Setting type: Single
+# Default value: 55.8698
+FlashlightAngle = 55.8698
+
+## Flashlight inner angle.
+# Setting type: Single
+# Default value: 36.6912
+FlashlightInnerAngle = 36.6912
+
+## Flashlight intensity.
+# Setting type: Single
+# Default value: 40
+FlashlightIntensity = 40
+
+## Flashlight range.
+# Setting type: Single
+# Default value: 40
+FlashlightRange = 40
+```
+</details>
+
+## (Multi) Player Locator
+
+- Displays the list of the players in the current world, above the health indicator.
+- Toggle a player position distance indicator overlay via <kbd>H</kbd>.
+
+In the player list, the current player's name is in yellow and the host is marked with `<Host>`.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.multiplayerlocator.cfg</summary>
+
+```
+[General]
+
+## Enable this mod
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## The input action shortcut to toggle the player locator overlay.
+# Setting type: String
+# Default value: H
+Key = <Keyboard>/H
+
+## The font size used
+# Setting type: Int32
+# Default value: 20
+FontSize = 20
+```
+</details>
+
+## (UI) Ukrainian Translation
+
+Patches in labels and enables switching to Ukrainian ("Українська") in the game's options screen. Note that some labels do not change when switching to Ukrainian the first time. This is a bug in the vanilla game's UI and can be resolved by restarting the game.
+
+The translation was kindly provided by +Dragon Kreig+ via Discord.
+
+:information_source: If you find a problem with the translation, please provide such feedback in **English** as I don't speak Ukrainian myself.
+
+### Configuration
+
+Only diagnostic options. Not relevant for the player.
+
+## (Item) Rods
+
+Adds **Aluminium**, **Cobalt**, **Iron**, **Magnesium**, **Silicon**, **Sulfur**, **Titanium** and **Zeolite** rods.
+
+You can enable/disable individual rods in the configuration.
+
+Remake of [Cisox Rods mod](https://www.nexusmods.com/planetcrafter/mods/75), now supporting game version 1.005+ and multiplayer.
+Based on the original assets and code from Cisox.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.itemrods.cfg</summary>
+
+```
+[General]
+
+## Enable rod for Iron
+# Setting type: Boolean
+# Default value: true
+Iron = true
+
+## Enable rod for Sulfur
+# Setting type: Boolean
+# Default value: true
+Sulfur = true
+
+## Enable rod for Titanium
+# Setting type: Boolean
+# Default value: true
+Titanium = true
+
+## Enable rod for Silicon
+# Setting type: Boolean
+# Default value: true
+Silicon = true
+
+## Enable rod for Cobalt
+# Setting type: Boolean
+# Default value: true
+Cobalt = true
+
+## Enable rod for Magnesium
+# Setting type: Boolean
+# Default value: true
+Magnesium = true
+
+## Enable rod for Aluminium
+# Setting type: Boolean
+# Default value: true
+Aluminium = true
+
+## Enable rod for Zeolite
+# Setting type: Boolean
+# Default value: true
+Zeolite = true
+```
+</details>

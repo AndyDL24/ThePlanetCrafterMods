@@ -1,11 +1,8 @@
-﻿using HarmonyLib;
+﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+// Licensed under the Apache License, Version 2.0
+
+using HarmonyLib;
 using SpaceCraft;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,7 +13,7 @@ namespace LibCommon
     /// </summary>
     internal class GameVersionCheck
     {
-        const string TargetVersion = "0.9.013";
+        const string TargetVersion = "1.317";
 
         static string modName;
 
@@ -35,7 +32,7 @@ namespace LibCommon
                 ShowDialog("<b><color=#FFCC00>/!\\ Warning /!\\</color></b>\n\nYou are running the mod\n    <i><color=#FFFF00>"
                     + modName + "</color></i>\ndesigned for game version\n    <i><color=#FFFF00>v"
                     + TargetVersion + "</color></i>\nwith the game version\n    <i><color=#FFFF00>v" + Application.version
-                    + "</color></i>\n\nPlease check for mod updates and update your mod(s).");
+                    + "</color></i>\n\nPlease wait/check for mod updates and update your mod(s).");
             }
         }
 

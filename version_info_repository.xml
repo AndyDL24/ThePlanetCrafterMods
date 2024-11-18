@@ -12,6 +12,12 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
+	<plugin guid="akarnokd.theplanetcraftermods.cheatautograbandmine"
+            description="(Cheat) Auto Grab and Mine"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatAutoGrabAndMine/CheatAutoGrabAndMine.csproj"
+            method="CsprojVersionTag"
+            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
+            />
 	<plugin guid="akarnokd.theplanetcraftermods.cheatautoharvest"
             description="(Cheat) Automatically Harvest Food n Algae"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatAutoHarvest/CheatAutoHarvest.csproj"
@@ -30,9 +36,21 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
+	<plugin guid="akarnokd.theplanetcraftermods.cheatautostore"
+            description="(Cheat) Auto Store"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatAutoStore/CheatAutoStore.csproj"
+            method="CsprojVersionTag"
+            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
+            />
 	<plugin guid="akarnokd.theplanetcraftermods.cheatbirthday"
             description="(Cheat) Birthday"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatBirthday/CheatBirthday.csproj"
+            method="CsprojVersionTag"
+            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
+            />
+	<plugin guid="akarnokd.theplanetcraftermods.cheatcraftfromnearbycontainers"
+            description="(Cheat) Craft From Nearby Containers"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatCraftFromNearbyContainers/CheatCraftFromNearbyContainers.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
@@ -78,21 +96,15 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
-	<plugin guid="akarnokd.theplanetcraftermods.cheatteleportnearestminable"
-            description="(Cheat) Teleport To Nearest Minable"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatTeleportNearestMinable/CheatTeleportNearestMinable.csproj"
+	<plugin guid="akarnokd.theplanetcraftermods.cheatwreckmap"
+            description="(Cheat) Wreck Map"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/CheatWreckMap/CheatWreckMap.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
 	<plugin guid="akarnokd.theplanetcraftermods.featcommandconsole"
             description="(Feat) Command Console"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/FeatCommandConsole/FeatCommandConsole.csproj"
-            method="CsprojVersionTag"
-            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
-            />
-	<plugin guid="akarnokd.theplanetcraftermods.featminerdrone"
-            description="(Feat) Miner Drone"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/FeatMinerDrone/FeatMinerDrone.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
@@ -114,12 +126,6 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
-	<plugin guid="akarnokd.theplanetcraftermods.fixunbricksave"
-            description="(Fix) Unbrick Save"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/FixUnbrickSave/FixUnbrickSave.csproj"
-            method="CsprojVersionTag"
-            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
-            />
 	<plugin guid="akarnokd.theplanetcraftermods.fixunofficialpatches"
             description="(Fix) Unofficial Patches"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/FixUnofficialPatches/FixUnofficialPatches.csproj"
@@ -138,15 +144,21 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
-	<plugin guid="akarnokd.theplanetcraftermods.lathreyimproveperformance"
-            description="(Lathrey) Improve Performance"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/LathreyImprovePerformance/LathreyImprovePerformance.csproj"
-            method="CsprojVersionTag"
-            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
-            />
 	<plugin guid="akarnokd.theplanetcraftermods.libcommon"
             description="(Lib) Common tools for other mods"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/LibCommon/LibCommon.csproj"
+            method="CsprojVersionTag"
+            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
+            />
+	<plugin guid="akarnokd.theplanetcraftermods.misccustomizeflashlight"
+            description="(Misc) Customize Flashlight"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/MiscCustomizeFlashlight/MiscCustomizeFlashlight.csproj"
+            method="CsprojVersionTag"
+            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
+            />
+	<plugin guid="akarnokd.theplanetcraftermods.miscdebug"
+            description="(Misc) Debug"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/MiscDebug/MiscDebug.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
@@ -162,9 +174,9 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
-	<plugin guid="akarnokd.theplanetcraftermods.perfmonitor"
-            description="(Perf) Monitor"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/PerfMonitor/PerfMonitor.csproj"
+	<plugin guid="akarnokd.theplanetcraftermods.multiplayerlocator"
+            description="(Multi) Player Locator"
+            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/MultiPlayerLocator/MultiPlayerLocator.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
@@ -210,12 +222,6 @@
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
-	<plugin guid="akarnokd.theplanetcraftermods.uicraftequipmentinplace"
-            description="(UI) Craft Equipment Inplace"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/UICraftEquipmentInplace/UICraftEquipmentInplace.csproj"
-            method="CsprojVersionTag"
-            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
-            />
 	<plugin guid="akarnokd.theplanetcraftermods.uicustominventorysortall"
             description="(UI) Customize Inventory Sort Order"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/UICustomInventorySortAll/UICustomInventorySortAll.csproj"
@@ -225,12 +231,6 @@
 	<plugin guid="akarnokd.theplanetcraftermods.uideconstructpreventaccidental"
             description="(UI) Prevent Accidental Deconstruct"
             discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/UIDeconstructPreventAccidental/UIDeconstructPreventAccidental.csproj"
-            method="CsprojVersionTag"
-            link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
-            />
-	<plugin guid="akarnokd.theplanetcraftermods.uidontclosecraftwindow"
-            description="(UI) Don't Close Craft Window"
-            discover="https://raw.githubusercontent.com/akarnokd/ThePlanetCrafterMods/main/UIDontCloseCraftWindow/UIDontCloseCraftWindow.csproj"
             method="CsprojVersionTag"
             link="https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest"
             />
