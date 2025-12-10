@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -208,7 +208,11 @@ namespace UIShowCrash
                 for (int i = idx; i < data.Count; i++)
                 {
                     var line = data[i];
-                    if (line.Contains("Exception"))
+                    if (
+                        line.Contains("Exception")
+                        || line.StartsWith("[Warning:  HarmonyX]")
+                        || line.StartsWith("[Error  :  HarmonyX]")
+                    )
                     {
                         //logger.LogInfo("  Found on line " + i + "(" + Path.GetFileName(file) + ")");
                         List<string> errorLines = [
@@ -219,8 +223,19 @@ namespace UIShowCrash
 
                         for (int j = i + 1; j < data.Count; j++)
                         {
-                            var er = data[j];
-                            if (er.Trim().StartsWith("at ") || er.Trim().StartsWith("--- "))
+                            var er = data[j].Trim();
+                            if (er.StartsWith("at ") 
+                                || er.StartsWith("Rethrow as ")
+                                || er.Length == 0
+                                || er.StartsWith("Unity.")
+                                || er.StartsWith("BepInEx.")
+                                || er.StartsWith("UnityEngine.")
+                                || er.StartsWith("SpaceCraft.")
+                                || er.StartsWith("UnityEngineInternal.")
+                                || er.StartsWith("--- ")
+                                || er.Contains("Exception")
+                                || er.StartsWith("Parameter name:")
+                            )
                             {
                                 errorLines.Add(er);
                             }

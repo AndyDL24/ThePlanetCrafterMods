@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -12,12 +12,15 @@ using System.Collections;
 using BepInEx.Logging;
 using System.Linq;
 using Unity.Netcode;
+using LibCommon;
+using System;
 
 namespace CheatAutoStore
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.cheatautostore", "(Cheat) Auto Store", PluginInfo.PLUGIN_VERSION)]
+    [BepInPlugin(modCheatAutoStoreGuid, "(Cheat) Auto Store", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
+        const string modCheatAutoStoreGuid = "akarnokd.theplanetcraftermods.cheatautostore";
 
         static ConfigEntry<bool> modEnabled;
 
@@ -51,6 +54,12 @@ namespace CheatAutoStore
 
         static ManualLogSource logger;
 
+        static AccessTools.FieldRef<WorldObject, int> fWorldObjectPlanetHash;
+
+        const string funcGetWorldObjectPlanetHash = "AutoStoreGetWorldObjectPlanetHash";
+        const string funcSetWorldObjectPlanetHash = "AutoStoreSetWorldObjectPlanetHash";
+        static readonly Queue<System.Action<int, int>> onPlanetHashCallback = [];
+
         public void Awake()
         {
             LibCommon.BepInExLoggerFix.ApplyFix();
@@ -74,15 +83,19 @@ namespace CheatAutoStore
             storeByNameMarker = Config.Bind("General", "StoreByNameMarker", "!", "The prefix for when using default item ids for storage naming. To disambiguate with other remote deposit mods that use star.");
             keepList = Config.Bind("General", "KeepList", "", "A comma separated list of itemId:amount elements to keep a minimum amount of that item. itemId is case sensitive. Example: WaterBottle1:5,OxygenCapsule1:5 to keep 5 water bottles and oxygen capsules in the backpack");
 
-            if (!key.Value.Contains("<"))
-            {
-                key.Value = "<Keyboard>/" + key.Value;
-            }
-            storeAction = new InputAction(name: "Store Items", binding: key.Value);
-            storeAction.Enable();
+            fWorldObjectPlanetHash = AccessTools.FieldRefAccess<WorldObject, int>("_planetHash");
+
+            UpdateKeyBindings();
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
-            Harmony.CreateAndPatchAll(typeof(Plugin));
+            var h = Harmony.CreateAndPatchAll(typeof(Plugin));
+
+            ModNetworking.Init(modCheatAutoStoreGuid, logger);
+            ModNetworking.Patch(h);
+            ModNetworking._debugMode = debugMode.Value;
+            ModNetworking.RegisterFunction(funcGetWorldObjectPlanetHash, OnGetWorldObjectPlanetHash);
+            ModNetworking.RegisterFunction(funcSetWorldObjectPlanetHash, OnSetWorldObjectPlanetHash);
+
         }
 
         static void Log(object message)
@@ -163,7 +176,20 @@ namespace CheatAutoStore
                 {
                     counter[0]++;
                     n++;
-                    invp.GetInventory((inv, wo) => counter[0]--);
+                    invp.GetInventory((inv, wo) =>
+                    {
+                        var pid = fWorldObjectPlanetHash(wo);
+                        if (pid == 0)
+                        {
+                            Log("    Requesting planet hash for world object " + wo.GetId() + " (" + wo.GetGroup().id + ")");
+                            onPlanetHashCallback.Enqueue((id, h) => counter[0]--);
+                            ModNetworking.SendHost(funcGetWorldObjectPlanetHash, wo.GetId().ToString());
+                        }
+                        else
+                        {
+                            counter[0]--;
+                        }
+                    });
                 }
             }
             Log("    Waiting for " + n + " objects");
@@ -180,10 +206,10 @@ namespace CheatAutoStore
         {
             var playerPos = ac.transform.position;
 
-            List<(int, string)> candidateInventoryIds = [];
+            List<(int, string, int)> candidateInventoryIds = [];
             List<(WorldObject, string)> candidateGetInventoryOfWorldObject = [];
 
-            List<WorldObject> wos = WorldObjectsHandler.Instance.GetConstructedWorldObjects();
+            var wos = WorldObjectsHandler.Instance.GetConstructedWorldObjects();
             Log("  Constructed WorldObjects: " + wos.Count);
 
             foreach (var wo in wos)
@@ -213,13 +239,14 @@ namespace CheatAutoStore
                 {
                     var dist = Vector3.Distance(playerPos, woPos);
                     Log("    WorldObject " + wo.GetId() + " (" + wo.GetGroup().GetId() + ") @ " + dist + " m");
-                    if (grid.StartsWith("Container") && dist <= range.Value)
+                    if (grid.StartsWith("Container", StringComparison.Ordinal) && dist <= range.Value)
                     {
                         if (wo.GetLinkedInventoryId() != 0)
                         {
                             candidateInventoryIds.Add((
                                 wo.GetLinkedInventoryId(),
-                                woTxt
+                                woTxt,
+                                fWorldObjectPlanetHash(wo)
                             ));
                         }
                         else
@@ -237,19 +264,19 @@ namespace CheatAutoStore
 
             var backpackInv = ac.GetPlayerBackpack().GetInventory();
 
-            var candidateInv = new List<(Inventory, string)>();
+            var candidateInv = new List<(Inventory, string, int)>();
 
             foreach (var iid in candidateInventoryIds)
             {
                 var fiid = iid;
                 InventoriesHandler.Instance.GetInventoryById(iid.Item1, 
-                    responseInv => candidateInv.Add((responseInv, fiid.Item2)));
+                    responseInv => candidateInv.Add((responseInv, fiid.Item2, fiid.Item3)));
             }
             foreach (var wo in candidateGetInventoryOfWorldObject)
             {
                 var fwo = wo;
                 InventoriesHandler.Instance.GetWorldObjectInventory(wo.Item1, 
-                    responseInv => candidateInv.Add((responseInv, fwo.Item2))
+                    responseInv => candidateInv.Add((responseInv, fwo.Item2, fWorldObjectPlanetHash(fwo.Item1)))
                 );
             }
 
@@ -257,7 +284,7 @@ namespace CheatAutoStore
 
         }
 
-        static IEnumerator WaitForInventories(Inventory backpackInv, List<(Inventory, string)> candidateInventory, int n)
+        static IEnumerator WaitForInventories(Inventory backpackInv, List<(Inventory, string, int)> candidateInventory, int n)
         {
             Log("  Waiting for GetInventoryById callbacks: " + candidateInventory.Count + " of " + n);
             while (candidateInventory.Count != n)
@@ -275,6 +302,17 @@ namespace CheatAutoStore
             var marker = storeByNameMarker.Value;
             var modeStoreByDemand = storeByDemand.Value;
             var modeStoreBySupply = storeBySupply.Value;
+
+            var currentPlanetHash = 0;
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl != null)
+            {
+                var cp = pl.GetCurrentPlanetData();
+                if (cp != null)
+                {
+                    currentPlanetHash = cp.GetPlanetHash();
+                }
+            }
 
             var aliases = new Dictionary<string, string>();
             foreach (var kv in storeByNameAliases.Value.Split(","))
@@ -360,7 +398,7 @@ namespace CheatAutoStore
 
                 foreach (var inv in candidateInventory)
                 {
-                    if (inv.Item1 != null)
+                    if (inv.Item1 != null && inv.Item3 == currentPlanetHash)
                     {
                         var foundCandidate = false;
                         if (modeStoreBySame)
@@ -441,31 +479,60 @@ namespace CheatAutoStore
             Managers.GetManager<BaseHudHandler>()?.DisplayCursorText("", 5f, "Auto Store: " + deposited + " / " + (backpackWos.Count + kept) + " deposited. " + excluded + " excluded. " + kept + " kept.");
         }
 
-        /* Fixed in 1.002
-        // Workaround for the method as it may crash if the woId no longer exists.
-        // We temporarily restore an empty object for the duration of the method
-        // so it can see no inventory and respond accordingly.
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(InventoriesHandler), "GetOrCreateNewInventoryServerRpc", [typeof(int), typeof(ServerRpcParams)])]
-        static void InventoriesHandler_GetOrCreateNewInventoryServerRpc_Pre(int woId, ref bool __state)
+        public static void OnModConfigChanged(ConfigEntryBase _)
         {
-            if (!WorldObjectsHandler.Instance.GetAllWorldObjects().ContainsKey(woId))
+            ModNetworking._debugMode = debugMode.Value;
+            UpdateKeyBindings();
+        }
+
+        void OnGetWorldObjectPlanetHash(ulong sender, string parameters)
+        {
+            if (int.TryParse(parameters, out var id))
             {
-                WorldObjectsHandler.Instance.GetAllWorldObjects()[woId] = new WorldObject(woId, null);
-                __state = true;
+                var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(id);
+                if (wo != null)
+                {
+                    ModNetworking.SendClient(sender, funcSetWorldObjectPlanetHash, id + "," + wo.GetPlanetHash());
+                }
             }
         }
 
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(InventoriesHandler), "GetOrCreateNewInventoryServerRpc", [typeof(int), typeof(ServerRpcParams)])]
-        static void InventoriesHandler_GetOrCreateNewInventoryServerRpc_Post(int woId, ref bool __state)
+        void OnSetWorldObjectPlanetHash(ulong sender, string parameters)
         {
-            if (__state)
+            var idHash = parameters.Split(',');
+            if (idHash.Length == 2)
             {
-                WorldObjectsHandler.Instance.GetAllWorldObjects().Remove(woId);
+                if (int.TryParse(idHash[0], out var id) && int.TryParse(idHash[1], out var hash))
+                {
+                    var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(id);
+                    if (wo != null)
+                    {
+                        wo.SetPlanetHash(hash);
+                        Log("OnSetWorldObjectPlanetHash: " + id + " set to " + hash);
+                        if (onPlanetHashCallback.TryDequeue(out var action))
+                        {
+                            action(id, hash);
+                        }
+                    }
+                    else
+                    {
+                        Log("OnSetWorldObjectPlanetHash: " + id + " not found for " + hash);
+                    }
+                    return;
+                }
             }
+            Log("OnSetWorldObjectPlanetHash: format error: " + parameters);
         }
-        */
+
+        static void UpdateKeyBindings()
+        {
+            if (!key.Value.Contains("<"))
+            {
+                key.Value = "<Keyboard>/" + key.Value;
+            }
+            storeAction = new InputAction(name: "Store Items", binding: key.Value);
+            storeAction.Enable();
+        }
 
         internal class TransferCompletionHandler
         {

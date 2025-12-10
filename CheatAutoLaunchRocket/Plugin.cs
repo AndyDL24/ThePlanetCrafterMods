@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -10,6 +10,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using Unity.Netcode;
+using System;
 
 namespace CheatAutoLaunchRocket
 {
@@ -56,7 +57,7 @@ namespace CheatAutoLaunchRocket
         static void WorldObjectsHandler_StoreNewWorldObject(WorldObject worldObject)
         {
             var gid = worldObject.GetGroup().GetId();
-            if (gid.StartsWith("Rocket") && gid != "RocketReactor")
+            if (gid.StartsWith("Rocket", StringComparison.Ordinal) && !gid.StartsWith("RocketReactor", StringComparison.Ordinal))
             {
                 rockets[worldObject.GetId()] = worldObject;
             }
@@ -66,13 +67,16 @@ namespace CheatAutoLaunchRocket
         [HarmonyPatch(typeof(WorldObjectsHandler), nameof(WorldObjectsHandler.DestroyWorldObject), [typeof(WorldObject), typeof(bool)])]
         static void WorldObjectsHandler_DestroyWorldObject(WorldObject worldObject)
         {
-            int id = worldObject.GetId();
-            if (!WorldObjectsIdHandler.IsWorldObjectFromScene(id))
+            if (worldObject != null)
             {
-                var gid = worldObject.GetGroup().GetId();
-                if (gid.StartsWith("Rocket") && gid != "RocketReactor")
+                int id = worldObject.GetId();
+                if (!WorldObjectsIdHandler.IsWorldObjectFromScene(id))
                 {
-                    rockets.Remove(id);
+                    var gid = worldObject.GetGroup().GetId();
+                    if (gid.StartsWith("Rocket", StringComparison.Ordinal) && !gid.StartsWith("RocketReactor", StringComparison.Ordinal))
+                    {
+                        rockets.Remove(id);
+                    }
                 }
             }
         }
@@ -86,7 +90,7 @@ namespace CheatAutoLaunchRocket
             {
 
                 var gid = worldObject.GetGroup().GetId();
-                if (gid.StartsWith("Rocket") && gid != "RocketReactor")
+                if (gid.StartsWith("Rocket", StringComparison.Ordinal) && !gid.StartsWith("RocketReactor", StringComparison.Ordinal))
                 {
                     rockets.Remove(woId);
                 }

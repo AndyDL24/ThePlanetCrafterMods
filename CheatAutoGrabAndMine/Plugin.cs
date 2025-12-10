@@ -1,22 +1,27 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
-using SpaceCraft;
-using HarmonyLib;
+using BepInEx.Bootstrap;
 using BepInEx.Configuration;
-using UnityEngine.InputSystem;
-using UnityEngine;
-using System.Collections;
 using BepInEx.Logging;
-using System.Linq;
+using HarmonyLib;
 using LibCommon;
+using SpaceCraft;
+using System;
+using System.Collections;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace CheatAutoGrabAndMine
 {
     [BepInPlugin("akarnokd.theplanetcraftermods.cheatautograbandmine", "(Cheat) Auto Grab and Mine", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency(modCheatInventoryStackingGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
+        const string modCheatInventoryStackingGuid = "akarnokd.theplanetcraftermods.cheatinventorystacking";
+        
         static Plugin me;
 
         static ConfigEntry<bool> modEnabled;
@@ -49,11 +54,20 @@ namespace CheatAutoGrabAndMine
 
         static ConfigEntry<bool> grabRods;
 
+        static ConfigEntry<bool> keyToggleMode;
+
+        static ConfigEntry<bool> petAnimals;
+
         static InputAction toggleAction;
 
         static ManualLogSource logger;
 
         static Coroutine scanningCoroutine;
+
+        static AccessTools.FieldRef<PetProxy, float> fPetProxyPetDelay;
+        static Func<Inventory, int> apiGetStackCountInventory;
+
+        static float audioLockout;
 
         public void Awake()
         {
@@ -69,6 +83,7 @@ namespace CheatAutoGrabAndMine
             debugMode = Config.Bind("General", "DebugMode", false, "Enable detailed logging? Chatty!");
             range = Config.Bind("General", "Range", 20, "The range to look for items within.");
             key = Config.Bind("General", "Key", "<Keyboard>/V", "The input action shortcut to toggle automatic scanning and taking.");
+            keyToggleMode = Config.Bind("General", "KeyToggleMode", true, "If true, pressing the Key will toggle auto scan and Ctrl+Key to do a one-time scan. If false, pressing the key will do a one-time scan and pressing Ctrl+Key will toggle auto-scan"); ;
             scanPeriod = Config.Bind("General", "Period", 3, "How often scan the surroundings for items go grab or mine. Seconds");
             scanEnabled = Config.Bind("General", "Scanning", false, "If true, the mod is actively scanning for items to take.");
 
@@ -84,12 +99,25 @@ namespace CheatAutoGrabAndMine
             mineMinerals = Config.Bind("General", "Minerals", true, "If true, nearby minerals can be mined. Subject to Include/Exclude though.");
             grabRods = Config.Bind("General", "Rods", true, "If true, nearby rods can be grabbed. Subject to Include/Exclude though.");
 
-            if (!key.Value.Contains("<"))
+            petAnimals = Config.Bind("General", "Animals", false, "If true, nearby animals will be pet.");
+
+            fPetProxyPetDelay = AccessTools.FieldRefAccess<PetProxy, float>("_petDelay");
+
+            UpdateKeyBindings();
+
+            if (Chainloader.PluginInfos.TryGetValue(modCheatInventoryStackingGuid, out var info))
             {
-                key.Value = "<Keyboard>/" + key.Value;
+                Logger.LogInfo("Mod " + modCheatInventoryStackingGuid + " found, using its services.");
+                var modType = info.Instance.GetType();
+                apiGetStackCountInventory = (Func<Inventory, int>)AccessTools.Field(modType, "apiGetStackCountInventory").GetValue(null);
             }
-            toggleAction = new InputAction(name: "Toggle periodic scan & grab", binding: key.Value);
-            toggleAction.Enable();
+            else
+            {
+                Logger.LogInfo("Mod " + modCheatInventoryStackingGuid + " not found.");
+                apiGetStackCountInventory = inv => inv.GetInsideWorldObjects().Count;
+            }
+
+            audioLockout = Time.realtimeSinceStartup;
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -118,12 +146,13 @@ namespace CheatAutoGrabAndMine
             }
             if (toggleAction.WasPressedThisFrame())
             {
-                if (Keyboard.current[Key.LeftCtrl].isPressed || Keyboard.current[Key.RightCtrl].isPressed)
+                var modifierHeld = Keyboard.current[Key.LeftCtrl].isPressed || Keyboard.current[Key.RightCtrl].isPressed;
+                if (modifierHeld == keyToggleMode.Value)
                 {
                     Managers.GetManager<BaseHudHandler>()
                         ?.DisplayCursorText("", 3f, "Auto Grab And Mine: Scanning Now");
 
-                    DoScan();
+                    me.StartCoroutine(DoScan());
                 }
                 else
                 {
@@ -137,12 +166,23 @@ namespace CheatAutoGrabAndMine
 
         public static void OnModConfigChanged(ConfigEntryBase _)
         {
+            UpdateKeyBindings();
             if (scanningCoroutine != null)
             {
                 me.StopCoroutine(scanningCoroutine);
                 scanningCoroutine = null;
             }
             scanningCoroutine = me.StartCoroutine(ScanLoop());
+        }
+
+        static void UpdateKeyBindings()
+        {
+            if (!key.Value.Contains("<"))
+            {
+                key.Value = "<Keyboard>/" + key.Value;
+            }
+            toggleAction = new InputAction(name: "Toggle periodic scan & grab", binding: key.Value);
+            toggleAction.Enable();
         }
 
         static IEnumerator ScanLoop()
@@ -152,30 +192,30 @@ namespace CheatAutoGrabAndMine
             {
                 if (scanEnabled.Value)
                 {
-                    DoScan();
+                    yield return DoScan();
                 }
                 yield return wait;
             }
         }
 
 
-        static void DoScan()
+        static IEnumerator DoScan()
         {
             if (!modEnabled.Value)
             {
-                return;
+                yield break;
             }
 
             var pm = Managers.GetManager<PlayersManager>();
             if (pm == null)
             {
-                return;
+                yield break;
             }
 
             var ac = pm.GetActivePlayerController();
             if (ac == null)
             {
-                return;
+                yield break;
             }
 
             Log("Begin");
@@ -233,6 +273,13 @@ namespace CheatAutoGrabAndMine
                 }
             }
 
+            yield return null;
+
+            if (ac == null || pm == null)
+            {
+                yield break;
+            }
+
             // ============================================================================================================================
 
             if (mineMinerals.Value)
@@ -260,7 +307,61 @@ namespace CheatAutoGrabAndMine
                 Log("- Minerals [disabled]");
             }
 
-            Log("Done");
+            yield return null;
+
+            if (ac == null || pm == null)
+            {
+                yield break;
+            }
+
+            // ============================================================================================================================
+
+            if (petAnimals.Value)
+            {
+                Log("- Pet Animals");
+                if (apiGetStackCountInventory(backpackInv) < backpackInv.GetSize())
+                {
+                    foreach (var pet in FindObjectsByType<PetProxy>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                    {
+                        if (Vector3.Distance(pos, pet.transform.position) <= range.Value)
+                        {
+                            WorldObject worldObject = pet.GetComponent<WorldObjectAssociated>().GetWorldObject();
+                            if (worldObject != null)
+                            {
+                                var _petDelay = fPetProxyPetDelay(pet);
+                                var next = Time.time - worldObject.GetPetTime();
+                                if (worldObject.GetPetTime() != 0 && next <= _petDelay)
+                                {
+                                    Log("    Petting " + pet.transform.position + " failed: timeout, eta " + (_petDelay - next));
+                                }
+                                else if (worldObject.GetHunger() < 0)
+                                {
+                                    Log("    Petting " + pet.transform.position + " failed: hungry");
+                                }
+                                else
+                                {
+                                    Log("    Petting " + pet.transform.position + " success");
+                                    pet.ActionPet();
+                                }
+                            }
+                            else
+                            {
+                                Log("    Petting " + pet.transform.position + " failed: worldobject");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    Log("    Backpack is full");
+                }
+            }
+            else
+            {
+                Log("- Pet Animals [disabled]");
+            }
+
+                Log("Done");
 
             void AddToInventoryFiltered(WorldObject wo, Actionnable ag)
             {
@@ -281,37 +382,37 @@ namespace CheatAutoGrabAndMine
                     return;
                 }
                 
-                if (IsLarvae(grid) && !grabLarvae.Value)
+                if (!grabLarvae.Value && IsLarvae(grid))
                 {
                     Log("    Grabbing larvae is disabled");
                     return;
                 }
-                else if (IsFishEggs(grid) && !grabFishEggs.Value)
+                else if (!grabFishEggs.Value && IsFishEggs(grid))
                 {
                     Log("    Grabbing fish eggs is disabled");
                     return;
                 }
-                else if (IsFrogEggs(grid) && !grabFrogEggs.Value)
+                else if (!grabFrogEggs.Value && IsFrogEggs(grid))
                 {
                     Log("    Grabbing frog eggs is disabled");
                     return;
                 }
-                else if (IsFood(grid) && !grabFood.Value)
+                else if (!grabFood.Value && IsFood(grid))
                 {
                     Log("    Grabbing food is disabled");
                     return;
                 }
-                else if (IsAlgae(grid) && !grabAlgae.Value)
+                else if (!grabAlgae.Value && IsAlgae(grid))
                 {
                     Log("    Grabbing algae is disabled");
                     return;
                 }
-                else if (IsGrabableOre(grid) && !mineMinerals.Value)
+                else if (!mineMinerals.Value && IsGrabableOre(grid))
                 {
                     Log("    Grabbing ore is disabled");
                     return;
                 }
-                else if (IsRod(grid) && !grabRods.Value)
+                else if (!grabRods.Value && IsRod(grid))
                 {
                     Log("    Grabbing rods is disabled");
                     return;
@@ -331,7 +432,7 @@ namespace CheatAutoGrabAndMine
                 }
 
                 // FIXME: grabbed: true  ????
-                InventoriesHandler.Instance.AddWorldObjectToInventory(wo, backpackInv, grabbed: false, success =>
+                InventoriesHandler.Instance.AddWorldObjectToInventory(wo, backpackInv, grabbed: ag is ActionGrabable, success =>
                 {
                     if (success)
                     {
@@ -342,11 +443,18 @@ namespace CheatAutoGrabAndMine
                         ?.AddInformation(2f, Readable.GetGroupName(group) + " + 1  (" + CountInInventory(backpackInv, group) + ")",
                             DataConfig.UiInformationsType.InInventory, group.GetImage());
 
-                        ac.GetPlayerAudio().PlayGrab();
+                        var t = Time.realtimeSinceStartup;
+                        var delta = t - audioLockout;
+                        if (delta >= 3)
+                        {
+                            audioLockout = t;
+                            ac.GetPlayerAudio().PlayGrab();
+                        }
                         Managers.GetManager<DisplayersHandler>()
                             ?.GetItemWorldDisplayer()
                             ?.Hide();
 
+                        /*
                         if (ag != null && ag is ActionGrabable agr)
                         {
                             var onGrab = agr.grabedEvent;
@@ -358,6 +466,7 @@ namespace CheatAutoGrabAndMine
                                 Log("    Invoking grabedEvent done.");
                             }
                         }
+                        */
                     }
                 });
             }
@@ -365,28 +474,32 @@ namespace CheatAutoGrabAndMine
 
         static bool IsLarvae(string grid)
         {
-            return grid.StartsWith("LarvaeBase") || (grid.StartsWith("Butterfly") && grid.EndsWith("Larvae"));
+            return grid.StartsWith("LarvaeBase", StringComparison.Ordinal) 
+                || (grid.StartsWith("Butterfly", StringComparison.Ordinal) 
+                    && grid.EndsWith("Larvae", StringComparison.Ordinal));
         }
 
         static bool IsFrogEggs(string grid)
         {
-            return grid.StartsWith("Frog") && grid.EndsWith("Eggs");
+            return grid.StartsWith("Frog", StringComparison.Ordinal) && grid.EndsWith("Eggs", StringComparison.Ordinal);
         }
 
         static bool IsFishEggs(string grid)
         {
-            return grid.StartsWith("Fish") && grid.EndsWith("Eggs");
+            return grid.StartsWith("Fish", StringComparison.Ordinal) && grid.EndsWith("Eggs", StringComparison.Ordinal);
         }
 
         static bool IsFood(string grid)
         {
-            return (grid.StartsWith("Vegetable") && grid.EndsWith("Growable"))
-                || (grid.StartsWith("Cook") && grid.EndsWith("Growable"));
+            return grid.EndsWith("Growable", StringComparison.Ordinal) && 
+                (grid.StartsWith("Vegetable", StringComparison.Ordinal) 
+                || grid.StartsWith("Cook", StringComparison.Ordinal)
+                );
         }
 
         static bool IsAlgae(string grid)
         {
-            return grid.StartsWith("Algae") && grid.EndsWith("Seed");
+            return grid.StartsWith("Algae", StringComparison.Ordinal) && grid.EndsWith("Seed", StringComparison.Ordinal);
         }
 
         static bool IsGrabTarget(string grid)
@@ -416,7 +529,7 @@ namespace CheatAutoGrabAndMine
 
         static bool IsRod(string grid)
         {
-            return grid.StartsWith("Rod-");
+            return grid.StartsWith("Rod-", StringComparison.Ordinal);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -13,9 +13,11 @@ using System.Reflection;
 using System.IO;
 using System;
 using TMPro;
-using System.Globalization;
 using Steamworks;
 using Unity.Netcode;
+using System.Text;
+using System.Linq;
+using BepInEx.Configuration;
 
 namespace FixUnofficialPatches
 {
@@ -25,6 +27,8 @@ namespace FixUnofficialPatches
 
         static ManualLogSource logger;
 
+        static ConfigEntry<bool> droneLogisticFixes;
+
         private void Awake()
         {
             LibCommon.BepInExLoggerFix.ApplyFix();
@@ -33,6 +37,8 @@ namespace FixUnofficialPatches
             Logger.LogInfo($"Plugin is loaded!");
 
             logger = Logger;
+
+            droneLogisticFixes = Config.Bind("General", "DroneLogisticFixes", true, "Enable the drone logistics fixes");
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -97,49 +103,13 @@ namespace FixUnofficialPatches
             return true;
         }
 
-        /*
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(Localization), nameof(Localization.GetLocalizedString))]
-        static bool Localization_GetLocalizedString(string stringCode, ref string __result)
-        {
-            if (stringCode == null)
-            {
-                __result = "";
-                return false;
-            }
-            return true;
-        }
-        */
-
         static readonly Color colorTransparent = new(0, 0, 0, 0);
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(DataTreatments), nameof(DataTreatments.ColorToString))]
-        static bool DataTreatments_ColorToString(ref string __result, in Color _color, char ___colorDelimiter)
-        {
-            if (_color == colorTransparent)
-            {
-                __result = "";
-            }
-            else
-            {
-                __result = _color.r.ToString(CultureInfo.InvariantCulture)
-                        + ___colorDelimiter
-                        + _color.g.ToString(CultureInfo.InvariantCulture)
-                        + ___colorDelimiter
-                        + _color.b.ToString(CultureInfo.InvariantCulture)
-                        + ___colorDelimiter
-                        + _color.a.ToString(CultureInfo.InvariantCulture)
-                    ;
-            }
-            return false;
-        }
-
-        [HarmonyPrefix]
         [HarmonyPatch(typeof(DataTreatments), nameof(DataTreatments.ParseStringColor))]
-        static void DataTreatments_ParseStringColor(ref string _float)
+        static void DataTreatments_ParseStringColor(ref string value)
         {
-            _float = _float.Replace('/', '.');
+            value = value.Replace('/', '.');
         }
 
         [HarmonyPrefix]
@@ -155,39 +125,11 @@ namespace FixUnofficialPatches
         }
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(Actionnable), "HandleHoverMaterial")]
-        static bool Actionnable_HandleHoverMaterial()
-        {
-            return Managers.GetManager<VisualsResourcesHandler>() != null;
-        }
-
-        [HarmonyPrefix]
         [HarmonyPatch(typeof(GamepadConfig), "OnDestroy")]
         static void GamepadConfig_OnDestroy(ref Callback<GamepadTextInputDismissed_t> ____gamepadTextInputDismissed)
         {
             ____gamepadTextInputDismissed ??= Callback<GamepadTextInputDismissed_t>.Create(
                     new Callback<GamepadTextInputDismissed_t>.DispatchDelegate(_ => { }));
-        }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(InventorySpawnContent), "OnConstructibleDestroyed")]
-        static bool InventorySpawnContent_OnConstructibleDestroyed()
-        {
-            return NetworkManager.Singleton != null;
-        }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(MachineOutsideGrower), "InstantiateAtRandomPosition")]
-        static bool MachineOutsideGrower_InstantiateAtRandomPosition()
-        {
-            return NetworkManager.Singleton != null;
-        }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(MachineGrower), "OnVegetableGrabed")]
-        static bool MachineGrower_OnVegetableGrabed()
-        {
-            return InventoriesHandler.Instance != null;
         }
 
         [HarmonyPrefix]
@@ -207,19 +149,177 @@ namespace FixUnofficialPatches
         }
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(GroupNetworkBase), "DeconstructServerRpc")]
-        static void GroupNetworkBase_DeconstructServerRpc(GroupNetworkBase __instance, 
-            ref ActionDeconstructible ____actionDeconstruct)
+        [HarmonyPatch(typeof(WorldUnitPositioning), nameof(WorldUnitPositioning.UpdateEvolutionPositioning))]
+        static bool WorldUnitPositioning_UpdateEvolutionPositioning(TerraformStage ___startTerraformStage)
         {
-            NetworkManager networkManager = __instance.NetworkManager;
-            if (networkManager == null || !networkManager.IsListening || !networkManager.IsServer)
+            return ___startTerraformStage != null;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerInputDispatcher), nameof(PlayerInputDispatcher.OnAutoForwardDispatcher))]
+        static bool PlayerInputDispatcher_OnAutoForwardDispatcher(PlayerInputDispatcher __instance)
+        {
+            var wh = Managers.GetManager<WindowsHandler>();
+            if (wh != null)
+            {
+                var dialog = wh.GetOpenedUi();
+                return dialog != DataConfig.UiType.Feedback
+                    && dialog != DataConfig.UiType.TextInput
+                    && dialog != DataConfig.UiType.Chat;
+            }
+            return true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(TextHelpers), nameof(TextHelpers.AddLineBreaksOnText))]
+        static bool TextHelpers_AddLineBreaksOnText(
+            string textToLineBreak,
+            ref string __result)
+        {
+            if (textToLineBreak.Contains("<br>"))
+            {
+                __result = textToLineBreak;
+            } 
+            else
+            {
+                var sentences = textToLineBreak.Split(". ");
+                var sb = new StringBuilder(textToLineBreak.Length + 8 * sentences.Length + 10);
+
+                for (int i = 0; i < sentences.Length; i++)
+                {
+                    sb.Append(sentences[i]);
+                    if (i < sentences.Length - 1)
+                    {
+                        sb.Append(". ");
+                        if (i % 2 == 0)
+                        {
+                            sb.Append("<br><br>");
+                        }
+                    }
+                }
+
+                __result = sb.ToString();
+            }
+            return false;
+        }
+
+        static PlanetLoader planetLoaderCache;
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(WorldUnitsHandler), nameof(WorldUnitsHandler.GetPlanetUnits))]
+        static bool WorldUnitsHandler_GetPlanetUnits(
+                string planetId,
+                Dictionary<int, WorldUnitsPlanet> ____planetUnits,
+                ref WorldUnitsPlanet __result
+            )
+        {
+            var pid = planetId;
+            if (string.IsNullOrEmpty(pid))
+            {
+                if (planetLoaderCache == null)
+                {
+                    planetLoaderCache = Managers.GetManager<PlanetLoader>();
+                }
+                var currentPlanet = planetLoaderCache.GetCurrentPlanetData();
+                if (currentPlanet != null)
+                {
+                    pid = currentPlanet.id;
+                }
+            }
+            if (string.IsNullOrEmpty(pid))
+            {
+                __result = null;
+            }
+            else
+            {
+                ____planetUnits.TryGetValue(pid.GetStableHashCode(), out __result);
+            }
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(JsonablesHelper), nameof(JsonablesHelper.JsonableToWorldObject))]
+        static void JsonablesHelper_JsonableToWorldObject(JsonableWorldObject jsonableWorldObject)
+        {
+            jsonableWorldObject.grwth = Mathf.Clamp(jsonableWorldObject.grwth, 0, 100);
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(TerrainVisualsHandler), "GetTerrainLayerDataByName")]
+        static bool TerrainVisualsHandler_GetTerrainLayerDataByName(ref bool __result)
+        {
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl == null)
+            {
+                __result = false;
+                return false;
+            }
+            var cd = pl.GetCurrentPlanetData();
+            if (cd == null)
+            {
+                __result = false;
+                return false;
+            }
+            return true;
+        }
+
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(JSONExport), nameof(JSONExport.LoadFromJson))]
+        static void JSONExport_LoadFromJson(
+            JsonableWorldState ____worldState,
+            List<JsonableProceduralInstance> ____proceduralInstances)
+        {
+            if (!droneLogisticFixes.Value)
             {
                 return;
             }
-            if (____actionDeconstruct == null)
+            if (____worldState != null && ____proceduralInstances != null)
             {
-                ____actionDeconstruct = __instance.GetComponentInChildren<ActionDeconstructible>(true);
+                for (int i = ____proceduralInstances.Count - 1; i >= 0; i--)
+                {
+                    if (____worldState.openedInstanceSeed == 0 
+                        || ____proceduralInstances[i].owner != ____worldState.openedInstanceSeed)
+                    {
+                        ____proceduralInstances.RemoveAt(i);
+                    }
+                }
             }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(LogisticManager), nameof(LogisticManager.InitLogistics))]
+        static void LogisticManager_InitLogistics(Dictionary<int, Dictionary<int, int>> ____taskPriorities)
+        {
+            if (!droneLogisticFixes.Value)
+            {
+                return;
+            }
+            if (!Managers.GetManager<PlanetLoader>().planetList.GetPlanetList(true)
+                .Any(e => e != null && e.GetPlanetHash() == 0))
+            {
+                ____taskPriorities.TryAdd(0, []);
+            }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDeparturePlatform), "Awake")]
+        static void MachineDeparturePlatform_Awake(MachineDeparturePlatform __instance)
+        {
+            if (!droneLogisticFixes.Value)
+            {
+                return;
+            }
+            Managers.GetManager<PlayersManager>().RegisterToLocalPlayerStarted(() => {
+                WorldObject worldObject = __instance.GetComponent<WorldObjectAssociated>().GetWorldObject();
+                Inventory inventoryById = InventoriesHandler.Instance.GetInventoryById(worldObject.GetLinkedInventoryId());
+                if (inventoryById != null)
+                {
+                    var le = inventoryById.GetLogisticEntity();
+
+                    AccessTools.FieldRefAccess<LogisticEntity, WorldObject>("_wo")(le) = worldObject;
+                }
+            });
         }
     }
 }

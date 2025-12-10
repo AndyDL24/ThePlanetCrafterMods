@@ -1,36 +1,15 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
 using SpaceCraft;
+using System;
 using Unity.Netcode;
 
 namespace CheatInventoryStacking
 {
     public partial class Plugin
     {
-        /// <summary>
-        /// Disallow stacking in growers.
-        /// </summary>
-        /// <param name="inventory"></param>
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(MachineGrower), nameof(MachineGrower.SetGrowerInventory))]
-        static void Patch_MachineGrower_SetGrowerInventory(Inventory inventory)
-        {
-            noStackingInventories.Add(inventory.GetId());
-        }
-
-        /// <summary>
-        /// Disallow stacking in outside growers.
-        /// </summary>
-        /// <param name="inventory"></param>
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(MachineOutsideGrower), nameof(MachineOutsideGrower.SetGrowerInventory))]
-        static void Patch_MachineOutsideGrower_SetGrowerInventory(Inventory inventory)
-        {
-            noStackingInventories.Add(inventory.GetId());
-        }
-
         /// <summary>
         /// Disallow stacking in DNA/Incubator.
         /// </summary>
@@ -57,20 +36,6 @@ namespace CheatInventoryStacking
                 {
                     iap.GetInventory((inv, _) => noStackingInventories.Add(inv.GetId()));
                 }
-            }
-        }
-
-        /// <summary>
-        /// Conditionally disallow stackingin optimizers.
-        /// </summary>
-        /// <param name="inventory"></param>
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(MachineOptimizer), nameof(MachineOptimizer.SetOptimizerInventory))]
-        static void Patch_MachineOptimizer_SetOptimizerInventory(Inventory inventory)
-        {
-            if (!stackOptimizer.Value)
-            {
-                noStackingInventories.Add(inventory.GetId());
             }
         }
 
@@ -187,6 +152,45 @@ namespace CheatInventoryStacking
             if (__instance is UiWindowDNAExtractor)
             {
                 noStackingInventories.Add(inventoryRight.GetId());
+            }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(InventoryChangeMaterial), "CheckInventory")]
+        static void Patch_InventoryChangeMaterial_CheckInventory(Inventory inventory)
+        {
+            noStackingInventories.Add(inventory.GetId());
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(InventoryAssociated), nameof(InventoryAssociated.SetInventory))]
+        static void Patch_InventoryAssociated_SetInventory(
+            InventoryAssociated __instance,
+            Inventory inventory
+        )
+        {
+            if (__instance == null 
+                || __instance.gameObject ==  null 
+                || inventory == null
+                || NetworkManager.Singleton == null
+                || !NetworkManager.Singleton.IsServer)
+            {
+                return;
+            }
+            if (!stackPlanetaryDepots.Value 
+                && __instance.gameObject.name.StartsWith("PlanetaryDeliveryDepot", StringComparison.Ordinal))
+            {
+                noStackingInventories.Add(inventory.GetId());
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(SessionController), "Start")]
+        static void Patch_SessionController_Start()
+        {
+            foreach (var gr in GroupsHandler.GetAllGroups())
+            {
+                gr.id = string.Intern(gr.id);
             }
         }
     }

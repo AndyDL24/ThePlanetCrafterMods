@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -21,7 +21,11 @@ namespace ItemRods
     [BepInDependency("akarnokd.theplanetcraftermods.uitranslationhungarian", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
-        static readonly List<string> ores = ["Iron", "Sulfur", "Titanium", "Silicon", "Cobalt", "Magnesium", "Aluminium", "Zeolite"];
+        static readonly List<string> ores = [
+            "Iron", "Sulfur", "Titanium", 
+            "Silicon", "Cobalt", "Magnesium", 
+            "Aluminium", "Zeolite", "Obsidian",
+            "Phosphorus", "Selenium"];
 
         static readonly Dictionary<string, Color> oreColors = new()
         {
@@ -56,7 +60,19 @@ namespace ItemRods
             {
                 "Zeolite",
                 new Color(0.9568f, 0.9843f, 1f, 1f)
-            }
+            },
+            {
+                "Obsidian",
+                new Color(0.1333f, 0.1333f, 0.1333f, 1f)
+            },
+            {
+                "Phosphorus",
+                new Color(177f/255, 245f/255, 245f/255, 1f)
+            },
+            {
+                "Selenium",
+                new Color(15f/255, 84f/255, 66f/255, 1f)
+            },
         };
 
         static readonly Dictionary<string, ConfigEntry<bool>> oreConfigs = [];
@@ -134,8 +150,10 @@ namespace ItemRods
                 bool flag2 = componentInChildren != null;
                 if (flag2)
                 {
-                    componentInChildren.material = new Material(componentInChildren.material);
-                    componentInChildren.material.name = "Rod" + ore;
+                    componentInChildren.material = new Material(componentInChildren.material)
+                    {
+                        name = "Rod" + ore
+                    };
                     componentInChildren.material.SetTexture("_MainTex", rodTexture);
                     componentInChildren.material.SetTexture("_BaseMap", rodTexture);
                     componentInChildren.material.SetTexture("_EmissionMap", emissionTexture);
@@ -153,7 +171,7 @@ namespace ItemRods
                 if (flag4)
                 {
                     byte[] array = File.ReadAllBytes(text2);
-                    Texture2D texture2D = new Texture2D(1, 1);
+                    var texture2D = new Texture2D(1, 1);
                     texture2D.LoadImage(array);
                     groupDataItem3.icon = Sprite.Create(texture2D, new Rect(0f, 0f, (float)texture2D.width, (float)texture2D.height), new Vector2(0f, 0f));
                 }
@@ -174,7 +192,26 @@ namespace ItemRods
                     string text2 = "Rod-" + text.ToLowerInvariant();
                     Group groupViaId = GroupsHandler.GetGroupViaId(text2);
                     logger.LogInfo("Unlocking " + text2);
-                    ____unlockedGroups.Add(groupViaId.stableHashCode);
+                    var h = groupViaId.stableHashCode;
+                    if (!____unlockedGroups.Contains(h))
+                    {
+                        ____unlockedGroups.Add(h);
+                    }
+                }
+            }
+
+            // cleanup previous duplication mistakes
+            for (var i = ____unlockedGroups.Count - 1; i >= 0; i--)
+            {
+                var a = ____unlockedGroups[i];
+                for (var j = i - 1; j >= 0; j--)
+                {
+                    var b = ____unlockedGroups[j];
+                    if (a == b)
+                    {
+                        ____unlockedGroups.RemoveAt(i);
+                        break;
+                    }
                 }
             }
         }
@@ -239,6 +276,32 @@ namespace ItemRods
                         dictionary["GROUP_DESC_Rod-" + text2] = "Extrém tömör " + element;
                     }
                 }
+            }
+
+            if (___localizationDictionary.TryGetValue("russian", out dictionary))
+            {
+                dictionary["GROUP_NAME_Rod-iron"] = "Железный стержень";
+                dictionary["GROUP_DESC_Rod-iron"] = "Чрезвычайно концентрированное железо";
+                dictionary["GROUP_NAME_Rod-sulfur"] = "Серный стержень";
+                dictionary["GROUP_DESC_Rod-sulfur"] = "Чрезвычайно концентрированная сера";
+                dictionary["GROUP_NAME_Rod-titanium"] = "Титановый стержень";
+                dictionary["GROUP_DESC_Rod-titanium"] = "Чрезвычайно концентрированный титан";
+                dictionary["GROUP_NAME_Rod-silicon"] = "Кремниевый стержень";
+                dictionary["GROUP_DESC_Rod-silicon"] = "Чрезвычайно концентрированный кремний";
+                dictionary["GROUP_NAME_Rod-cobalt"] = "Кобальтовый стержень";
+                dictionary["GROUP_DESC_Rod-cobalt"] = "Чрезвычайно концентрированный кобальт";
+                dictionary["GROUP_NAME_Rod-magnesium"] = "Магниевый стержень";
+                dictionary["GROUP_DESC_Rod-magnesium"] = "Чрезвычайно концентрированный магний";
+                dictionary["GROUP_NAME_Rod-aluminium"] = "Алюминиевый стержень";
+                dictionary["GROUP_DESC_Rod-aluminium"] = "Чрезвычайно концентрированный алюминий";
+                dictionary["GROUP_NAME_Rod-zeolite"] = "Цеолитовый стержень";
+                dictionary["GROUP_DESC_Rod-zeolite"] = "Чрезвычайно концентрированный цеолит";
+                dictionary["GROUP_NAME_Rod-obsidian"] = "Обсидиановый стержень";
+                dictionary["GROUP_DESC_Rod-obsidian"] = "Чрезвычайно концентрированный обсидиан";
+                dictionary["GROUP_NAME_Rod-phosphorus"] = "Фосфорный стержень";
+                dictionary["GROUP_DESC_Rod-phosphorus"] = "Чрезвычайно концентрированный фосфор";
+                dictionary["GROUP_NAME_Rod-selenium"] = "Селеновый стержень";
+                dictionary["GROUP_DESC_Rod-selenium"] = "Чрезвычайно концентрированный селен";
             }
         }
     }

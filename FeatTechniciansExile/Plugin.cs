@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -30,10 +30,12 @@ namespace FeatTechniciansExile
         internal static Texture2D technicianBack;
 
         // /tp 1990 70 1073
-        static Dictionary<string, Vector3> technicianDropLocationPerPlanet = new() {
+        static readonly Dictionary<string, Vector3> technicianDropLocationPerPlanet = new() {
             { "",  new Vector3(1995, 68.8f, 1073) },
             { "Prime",  new Vector3(1995, 68.8f, 1073) },
-            { "Humble", new Vector3(1327, 347.6f, -333) }
+            { "Humble", new Vector3(1327, 347.6f, -333) },
+            { "Selenea", new Vector3(-580, 212, 525) },
+            { "Aqualis", new Vector3(0, 0, 0) }
         };
 
         static TechnicianAvatar avatar;
@@ -100,6 +102,9 @@ namespace FeatTechniciansExile
 
             AddTranslation(dir, "english");
             AddTranslation(dir, "hungarian");
+            AddTranslation(dir, "russian");
+            AddTranslation(dir, "french");
+            AddTranslation(dir, "spanish");
 
             PrepareDialogChoices();
 
@@ -117,10 +122,26 @@ namespace FeatTechniciansExile
                 msg2.yearSent = "Today";
                 msg2.messageType = DataConfig.MessageType.FromWorld;
             };
+            var msg3 = ScriptableObject.CreateInstance<MessageData>();
+            {
+                msg3.stringId = "TechniciansExile_Message_Selenea";
+                msg3.senderStringId = "TechniciansExile_Name";
+                msg3.yearSent = "Today";
+                msg3.messageType = DataConfig.MessageType.FromWorld;
+            };
+            var msg4 = ScriptableObject.CreateInstance<MessageData>();
+            {
+                msg4.stringId = "TechniciansExile_Message_Aqualis";
+                msg4.senderStringId = "TechniciansExile_Name";
+                msg4.yearSent = "Today";
+                msg4.messageType = DataConfig.MessageType.FromWorld;
+            }
 
             technicianMessageDict[""] = msg1;
             technicianMessageDict["Prime"] = msg1;
             technicianMessageDict["Humble"] = msg2;
+            technicianMessageDict["Selenea"] = msg3;
+            technicianMessageDict["Aqualis"] = msg4;
 
             technicianMessage2 = ScriptableObject.CreateInstance<MessageData>();
             {
@@ -202,9 +223,9 @@ namespace FeatTechniciansExile
 
             logger.LogInfo("Start");
 
-            var pid = pl.GetPlanetData().id;
+            var pid = pl.GetCurrentPlanetData().id;
 
-            var technicianDropLocation = technicianDropLocationPerPlanet[pid];
+            technicianDropLocationPerPlanet.TryGetValue(pid, out var technicianDropLocation);
 
             technicianLocation1 = technicianDropLocation + new Vector3(0, -0.5f, 0);
             technicianRotation1 = Quaternion.identity * Quaternion.Euler(0, -90, 0);
@@ -281,9 +302,20 @@ namespace FeatTechniciansExile
         {
             bool dontSaveMe = false;
 
-            var pid = Managers.GetManager<PlanetLoader>().GetPlanetData().id;
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl == null)
+            {
+                return;
+            }
+            var cp = pl.GetCurrentPlanetData();
+            if (cp == null)
+            {
+                return;
+            }
 
-            var technicianDropLocation = technicianDropLocationPerPlanet[pid];
+            var pid = cp.id;
+
+            technicianDropLocationPerPlanet.TryGetValue(pid, out var technicianDropLocation);
 
             var livingPodBase = technicianDropLocation + new Vector3(0, 0, 15);
 
@@ -892,88 +924,87 @@ namespace FeatTechniciansExile
         void CheckArrival()
         {
             var mh = Managers.GetManager<MeteoHandler>();
-            if (mh != null)
+            if (mh == null)
             {
-                var pid = Managers.GetManager<PlanetLoader>().GetPlanetData().id;
+                return;
+            }
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl == null)
+            {
+                return;
+            }
+            var cp = pl.GetCurrentPlanetData();
+            if (cp == null)
+            {
+                return;
+            }
+            var pid = cp.id;
 
-                if (asteroid == null)
+            if (asteroid == null)
+            {
+                /*
+                foreach (var me in mh.meteoEvents)
                 {
-                    /*
-                    foreach (var me in mh.meteoEvents)
+                    logger.LogInfo("Dump meteo events: " + me.environmentVolume.name);
+                }*/
+                var mes = fMeteoHandlerMeteoEvents(mh);
+                if (mes != null)
+                {
+                    MeteoEventData meteoEvent = default;
+
+                    foreach (var me in mes)
                     {
-                        logger.LogInfo("Dump meteo events: " + me.environmentVolume.name);
-                    }*/
-                    var mes = fMeteoHandlerMeteoEvents(mh);
-                    if (mes != null)
-                    {
-                        MeteoEventData meteoEvent = default;
+                        var list = me.asteroidEventData?.asteroidGameObject?.GetComponent<Asteroid>()?.groupsSelected;
 
-                        foreach (var me in mes)
+                        if (list != null && list.Count != 0 && list.Any(e => e.id == "PulsarQuartz"))
                         {
-                            var list = me.asteroidEventData?.asteroidGameObject?.GetComponent<Asteroid>()?.groupsSelected;
-
-                            if (list != null && list.Count != 0 && list.Any(e => e.id == "PulsarQuartz"))
-                            {
-                                meteoEvent = me;
-                                break;
-                            }
-                        }
-
-                        if (meteoEvent != null)
-                        {
-
-                            logger.LogInfo("Launching arrival meteor: " + meteoEvent.environmentVolume.name);
-
-                            mh.meteoSound.StartMeteoAudio(meteoEvent);
-                            if (meteoEvent.asteroidEventData != null)
-                            {
-                                var selectedAsteroidEventData = Instantiate(meteoEvent.asteroidEventData);
-
-                                var ah = Managers.GetManager<AsteroidsHandler>();
-
-                                var technicianDropLocation = technicianDropLocationPerPlanet[pid];
-
-                                var obj = Instantiate(
-                                    selectedAsteroidEventData.asteroidGameObject,
-                                    technicianDropLocation + new Vector3(0, 1000, 0),
-                                    Quaternion.identity,
-                                    ah.gameObject.transform
-                                );
-                                obj.transform.LookAt(technicianDropLocation);
-
-                                asteroid = obj.GetComponent<Asteroid>();
-                                var isr = 4 * Mathf.Max(asteroid.initialSpeedRange.x, asteroid.initialSpeedRange.y);
-                                asteroid.initialSpeedRange = new Vector2(isr, isr);
-                                asteroid.DefineVariables(fAsteroidsHandlerRandom(ah), false);
-                                asteroid.SetLinkedAsteroidEvent(selectedAsteroidEventData);
-                                asteroid.debrisDestroyTime = 15;
-                                asteroid.placeAsteroidBody = false;
-                                selectedAsteroidEventData.ChangeExistingAsteroidsCount(1);
-                                selectedAsteroidEventData.ChangeTotalAsteroidsCount(1);
-                            }
-                        } 
-                        else
-                        {
-                            questPhase = QuestPhase.Initial_Help;
-
-                            var msh = Managers.GetManager<MessagesHandler>();
-                            msh.AddNewReceivedMessage(technicianMessageDict[pid], true);
-
-                            ShowChoice(dialogChoices["WhoAreYou"]);
-                            SaveState();
-                            SetVisibilityViaCurrentPhase();
+                            meteoEvent = me;
+                            break;
                         }
                     }
-                }
-                else
-                {
-                    if (fAsteroidHasCrashed(asteroid))
+
+                    if (meteoEvent != null)
                     {
-                        asteroid = null;
+
+                        logger.LogInfo("Launching arrival meteor: " + meteoEvent.environmentVolume.name);
+
+                        mh.meteoSound.StartMeteoAudio(meteoEvent);
+                        if (meteoEvent.asteroidEventData != null)
+                        {
+                            var selectedAsteroidEventData = Instantiate(meteoEvent.asteroidEventData);
+
+                            var ah = Managers.GetManager<AsteroidsHandler>();
+
+                            technicianDropLocationPerPlanet.TryGetValue(pid, out var technicianDropLocation);
+
+                            var obj = Instantiate(
+                                selectedAsteroidEventData.asteroidGameObject,
+                                technicianDropLocation + new Vector3(0, 1000, 0),
+                                Quaternion.identity,
+                                ah.gameObject.transform
+                            );
+                            obj.transform.LookAt(technicianDropLocation);
+
+                            asteroid = obj.GetComponent<Asteroid>();
+                            var isr = 4 * Mathf.Max(asteroid.initialSpeedRange.x, asteroid.initialSpeedRange.y);
+                            asteroid.initialSpeedRange = new Vector2(isr, isr);
+                            asteroid.DefineVariables(fAsteroidsHandlerRandom(ah), false);
+                            asteroid.SetLinkedAsteroidEvent(selectedAsteroidEventData);
+                            asteroid.debrisDestroyTime = 15;
+                            asteroid.placeAsteroidBody = false;
+                            selectedAsteroidEventData.ChangeExistingAsteroidsCount(1);
+                            selectedAsteroidEventData.ChangeTotalAsteroidsCount(1);
+                        }
+                    } 
+                    else
+                    {
                         questPhase = QuestPhase.Initial_Help;
 
                         var msh = Managers.GetManager<MessagesHandler>();
-                        msh.AddNewReceivedMessage(technicianMessageDict[pid], true);
+                        if (technicianMessageDict.TryGetValue(pid, out var msg))
+                        {
+                            msh.AddNewReceivedMessage(msg, true);
+                        }
 
                         ShowChoice(dialogChoices["WhoAreYou"]);
                         SaveState();
@@ -981,6 +1012,25 @@ namespace FeatTechniciansExile
                     }
                 }
             }
+            else
+            {
+                if (fAsteroidHasCrashed(asteroid))
+                {
+                    asteroid = null;
+                    questPhase = QuestPhase.Initial_Help;
+
+                    var msh = Managers.GetManager<MessagesHandler>();
+                    if (technicianMessageDict.TryGetValue(pid, out var mess))
+                    {
+                        msh.AddNewReceivedMessage(mess, true);
+                    }
+
+                    ShowChoice(dialogChoices["WhoAreYou"]);
+                    SaveState();
+                    SetVisibilityViaCurrentPhase();
+                }
+            }
+            
         }
 
         void CheckInitialHelp()
@@ -990,9 +1040,21 @@ namespace FeatTechniciansExile
 
         void CheckBaseSetup()
         {
-            var pm = GetPlayerMainController();
-            var technicianDropLocation = technicianDropLocationPerPlanet[Managers.GetManager<PlanetLoader>().GetPlanetData().id];
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl == null)
+            {
+                return;
+            }
+            var cp = pl.GetCurrentPlanetData();
+            if (cp == null)
+            {
+                return;
+            }
 
+            var pid = cp.id;
+            technicianDropLocationPerPlanet.TryGetValue(pid, out var technicianDropLocation);
+
+            var pm = GetPlayerMainController();
             if (Vector3.Distance(pm.transform.position, technicianDropLocation) >= 300)
             {
 
@@ -1008,7 +1070,7 @@ namespace FeatTechniciansExile
 
         static void ForceResetWorldUnits()
         {
-            foreach (var wo in Managers.GetManager<WorldUnitsHandler>().GetAllWorldUnits())
+            foreach (var wo in Managers.GetManager<WorldUnitsHandler>().GetAllPlanetUnits())
             {
                 wo.ForceResetValues();
             }
@@ -1282,7 +1344,7 @@ namespace FeatTechniciansExile
         {
             if (questPhase == QuestPhase.Operating)
             {
-                List<WorldUnit> allWorldUnits = Managers.GetManager<WorldUnitsHandler>().GetAllWorldUnits();
+                List<WorldUnit> allWorldUnits = Managers.GetManager<WorldUnitsHandler>().GetAllPlanetUnits();
                 var lines = ___gridGenerationRockets.GetComponentsInChildren<UiGroupLine>();
 
                 logger.LogInfo("Rocket lines: " + lines.Length);
@@ -1328,15 +1390,6 @@ namespace FeatTechniciansExile
             }
         }
 
-        // This method crashes with NPE for some reason, maybe because the pod is 
-        // made invisible?
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(ConstraintAgainstPanel), "OnDestroy")]
-        static bool ConstraintAgainstPanel_OnDestroy(BuilderDisplayer ____builderDisplayer)
-        {
-            return ____builderDisplayer != null;
-        }
-
         [HarmonyPrefix]
         [HarmonyPatch(typeof(WindowsHandler), nameof(WindowsHandler.CloseAllWindows))]
         static bool WindowsHandler_CloseAllWindows()
@@ -1375,6 +1428,14 @@ namespace FeatTechniciansExile
                 }
             }
         }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineGrowerVegetationHarvestable), "OnInventoryModified")]
+        static bool Patch_MachineGrowerVegetationHarvestable_OnInventoryModified(Inventory ____secondInventory)
+        {
+            return ____secondInventory != null;
+        }
+
         internal class ConversationEntry
         {
             internal string owner;
@@ -1690,7 +1751,7 @@ namespace FeatTechniciansExile
                     var che = currentHistory[i];
                     var txt = Localization.GetLocalizedString(che.labelId);
 
-                    var lines = txt.Split(new[] { "<br>" }, StringSplitOptions.None);
+                    var lines = txt.Split(["<br>"], StringSplitOptions.None);
 
                     for (int k = lines.Length - 1; k >= 0; k--)
                     {

@@ -1,9 +1,8 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
 using SpaceCraft;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace CheatInventoryStacking
@@ -50,62 +49,17 @@ namespace CheatInventoryStacking
         }
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(ActionDeconstructible), nameof(ActionDeconstructible.RetrieveResources))]
-        static bool Patch_ActionDeconstructible_RetrieveResources(
-            GameObject ___gameObjectRoot,
-            Inventory playerInventory,
-            out List<int> dropped,
-            out List<int> stored)
+        [HarmonyPatch(typeof(WorldObjectsHandler), "RetrieveResourcesFromDeconstructionServerRpc")]
+        static void Patch_WorldObjectsHandler_RetrieveResourcesFromDeconstructionServerRpc_Pre()
         {
-            if (stackSize.Value <= 1 || !stackBackpack.Value)
-            {
-                dropped = null;
-                stored = null;
-                return true;
-            }
+            isLastSlotOccupiedMode = true;
+        }
 
-            dropped = [];
-            stored = [];
-
-            var woa = ___gameObjectRoot.GetComponent<WorldObjectAssociated>();
-
-            if (woa == null || woa.GetWorldObject() == null || woa.GetWorldObject().GetGroup() == null)
-            {
-                return false;
-            }
-
-            if (Managers.GetManager<GameSettingsHandler>().GetCurrentGameSettings().GetFreeCraft())
-            {
-                return false;
-            }
-
-            var ingredients = new List<Group>(woa.GetWorldObject().GetGroup().GetRecipe().GetIngredientsGroupInRecipe());
-
-            var panels = ___gameObjectRoot.GetComponentsInChildren<Panel>();
-            foreach (var panel in panels)
-            {
-                var pconstr = panel.GetPanelGroupConstructible();
-                if (pconstr != null)
-                {
-                    ingredients.AddRange(pconstr.GetRecipe().GetIngredientsGroupInRecipe());
-                }
-            }
-
-            foreach (var gr in ingredients)
-            {
-                if (playerInventory == null || IsFullStackedOfInventory(playerInventory, gr.id))
-                {
-                    WorldObjectsHandler.Instance.CreateAndDropOnFloor(gr, ___gameObjectRoot.transform.position + new Vector3(0f, 1f, 0f));
-                    dropped.Add(gr.stableHashCode);
-                }
-                else
-                {
-                    InventoriesHandler.Instance.AddItemToInventory(gr, playerInventory);
-                    stored.Add(gr.stableHashCode);
-                }
-            }
-
-            return false;
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(WorldObjectsHandler), "RetrieveResourcesFromDeconstructionServerRpc")]
+        static void Patch_WorldObjectsHandler_RetrieveResourcesFromDeconstructionServerRpc_Post()
+        {
+            isLastSlotOccupiedMode = false;
         }
 
         [HarmonyPrefix]
@@ -172,26 +126,40 @@ namespace CheatInventoryStacking
             {
                 if (___panel.GetIsCeiling())
                 {
-                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.FloorLight, refreshIds: true, disolve: true);
+                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.FloorLight, refreshIds: true, disolve: false);
                 }
                 else
                 {
-                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.FloorPlain, refreshIds: true, disolve: true);
+                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.FloorPlain, refreshIds: true, disolve: false);
                 }
             }
             else if (___panel.GetPanelType() == DataConfig.BuildPanelType.Wall)
             {
-                if (___panel.GetContingousPanels(2f) != null)
+                if (___panel.GetContingousPanels(2f, false) != null)
                 {
-                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.WallCorridor, refreshIds: true, disolve: true);
+                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.WallCorridor, refreshIds: true, disolve: false);
                 }
                 else
                 {
-                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.WallPlain, refreshIds: true, disolve: true);
+                    ___panel.ChangePanel(DataConfig.BuildPanelSubType.WallPlain, refreshIds: true, disolve: false);
                 }
             }
 
             return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PetProxy), "ActionPetServerRpc")]
+        static void Patch_PetProxy_ActionPetServerRpc_Pre()
+        {
+            isLastSlotOccupiedMode = true;
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(PetProxy), "ActionPetServerRpc")]
+        static void Patch_PetProxy_ActionPetServerRpc_Post()
+        {
+            isLastSlotOccupiedMode = false;
         }
     }
 }

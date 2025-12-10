@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -33,6 +33,8 @@ namespace CheatCraftFromNearbyContainers
 
         static ConfigEntry<string> includeFilter;
 
+        static ConfigEntry<bool> currentPlanetOnly;
+
         static ManualLogSource logger;
 
         static bool inventoryLookupInProgress;
@@ -59,7 +61,7 @@ namespace CheatCraftFromNearbyContainers
 
         // Set from Inventory Stacking if present
         public static Func<Inventory, HashSet<int>, string, bool> apiIsFullStackedWithRemoveInventory = 
-            (inv, toremove, grid) => inv.GetInsideWorldObjects().Count - toremove.Count >= inv.GetSize();
+            (inv, toremove, grid) => fInventoryWorldObjectsInInventory(inv).Count - toremove.Count >= inv.GetSize();
 
         /// <summary>
         /// Call this method to make inventory preparations before setting a construction ghost.
@@ -70,6 +72,15 @@ namespace CheatCraftFromNearbyContainers
         static MethodInfo mPlayerInputDispatcherIsTyping;
 
         static Coroutine vanillaPinUpdaterCoroutine;
+
+        const string funcGetWorldObjectPlanetHash = "CFNCGetWorldObjectPlanetHash";
+        const string funcSetWorldObjectPlanetHash = "CFNCSetWorldObjectPlanetHash";
+
+        static AccessTools.FieldRef<WorldObject, int> fWorldObjectPlanetHash;
+
+        static string[] includeFilterArray = [];
+
+        static AccessTools.FieldRef<Inventory, List<WorldObject>> fInventoryWorldObjectsInInventory;
 
         public void Awake()
         {
@@ -85,23 +96,28 @@ namespace CheatCraftFromNearbyContainers
             range = Config.Bind("General", "Range", 20, "The range to look for containers within.");
             key = Config.Bind("General", "Key", "<Keyboard>/Home", "The input action shortcut toggle this mod on or off.");
             includeFilter = Config.Bind("General", "IncludeFilter", "", "Comma-separated list of item id prefixes whose inventory should be included. Example: OreExtractor,OreBreaker");
+            currentPlanetOnly = Config.Bind("General", "CurrentPlanetOnly", true, "If true, only containers from the current planet are considered.");
 
-            if (!key.Value.Contains("<"))
-            {
-                key.Value = "<Keyboard>/" + key.Value;
-            }
-            toggleAction = new InputAction(name: "Toggle the ranged crafting", binding: key.Value);
-            toggleAction.Enable();
+            UpdateIncludeFilterList();
+            UpdateKeyBindings();
 
             fCraftManagerCrafting = AccessTools.FieldRefAccess<bool>(typeof(CraftManager), "_crafting");
             mPlayerInputDispatcherIsTyping = AccessTools.Method(typeof(PlayerInputDispatcher), "IsTyping")
                 ?? throw new InvalidOperationException("PlayerInputDispatcher::IsTyping not found");
 
+            fWorldObjectPlanetHash = AccessTools.FieldRefAccess<WorldObject, int>("_planetHash");
+
+            fInventoryWorldObjectsInInventory = AccessTools.FieldRefAccess<Inventory, List<WorldObject>>("_worldObjectsInInventory");
+
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
-            var harmony = Harmony.CreateAndPatchAll(typeof(Plugin));
-            /*
-            LibCommon.GameVersionCheck.Patch(harmony, "(Cheat) Craft From Nearby Containers - v" + PluginInfo.PLUGIN_VERSION);
-            */
+            var h = Harmony.CreateAndPatchAll(typeof(Plugin));
+            LibCommon.GameVersionCheck.Patch(h, "(Cheat) Craft From Nearby Containers - v" + PluginInfo.PLUGIN_VERSION);
+
+            ModNetworking.Init(modCheatCraftFromNearbyContainersGuid, logger);
+            ModNetworking.Patch(h);
+            ModNetworking._debugMode = debugMode.Value;
+            ModNetworking.RegisterFunction(funcGetWorldObjectPlanetHash, OnGetWorldObjectPlanetHash);
+            ModNetworking.RegisterFunction(funcSetWorldObjectPlanetHash, OnSetWorldObjectPlanetHash);
         }
 
         static void Log(object message)
@@ -190,17 +206,17 @@ namespace CheatCraftFromNearbyContainers
                         Managers.GetManager<BaseHudHandler>()?.DisplayCursorText("UI_craft_contains_object", 0f, "", "");
                         return;
                     }
-                    PrepareInventories(__instance, ac);
+                    PrepareInventories(__instance, ac, __instance.cantCraftIfSpawnContainsObject);
                 });
                 return false;
             }
 
-            PrepareInventories(__instance, ac);
+            PrepareInventories(__instance, ac, __instance.cantCraftIfSpawnContainsObject);
 
             return false;
         }
 
-        static void PrepareInventories(ActionCrafter __instance, PlayerMainController ac)
+        static void PrepareInventories(ActionCrafter __instance, PlayerMainController ac, bool _checkSpawnPosition)
         {
             if (inventoryLookupInProgress)
             {
@@ -218,7 +234,7 @@ namespace CheatCraftFromNearbyContainers
 
                 UiWindowCraft uiWindowCraft = (UiWindowCraft)Managers.GetManager<WindowsHandler>()
                     .OpenAndReturnUi(DataConfig.UiType.Craft);
-                uiWindowCraft.SetCrafter(__instance, !__instance.cantCraft);
+                uiWindowCraft.SetCrafter(__instance, !__instance.cantCraft, _checkSpawnPosition);
                 uiWindowCraft.ChangeTitle(Localization.GetLocalizedString(__instance.titleLocalizationId));
 
                 inventoryLookupInProgress = false;
@@ -332,7 +348,25 @@ namespace CheatCraftFromNearbyContainers
                 {
                     counter[0]++;
                     n++;
-                    invp.GetInventory((inv, wo) => counter[0]--);
+                    invp.GetInventory((inv, wo) =>
+                    {
+                        if (inv != null && wo != null)
+                        {
+                            // On the Client, the secondary inventories list is not populated
+                            // So we have to fill back in those ids from the proxies targeting
+                            // the same world object jet not the main inventory id
+                            if (wo.GetLinkedInventoryId() > 0 && wo.GetLinkedInventoryId() != inv.GetId())
+                            {
+                                var lst = wo.GetSecondaryInventoriesId();
+                                if (lst != null && !lst.Contains(inv.GetId()))
+                                {
+                                    lst.Add(inv.GetId());
+                                    Log("    Wo: " + wo.GetId() + ", Inv: " + wo.GetLinkedInventoryId() + ", SecInv: " + inv.GetId());
+                                }
+                            }
+                        }
+                        counter[0]--;
+                    });
                 }
             }
             Log("    Waiting for " + n + " objects");
@@ -346,14 +380,18 @@ namespace CheatCraftFromNearbyContainers
             GetInventoriesInRangeSearch(parent, pos, onComplete);
         }
 
-        static List<string> GetPrefixes()
+        static void UpdateIncludeFilterList()
         {
             var v = includeFilter.Value;
             if (v.IsNullOrWhiteSpace())
             {
-                return [];
+                includeFilterArray = [];
             }
-            return [..v.Split(',')];
+            else
+            {
+                includeFilterArray = v.Split(',');
+            }
+            ;
         }
 
         static void GetInventoriesInRangeSearch(MonoBehaviour parent, Vector3 pos, Action<List<Inventory>> onComplete)
@@ -361,11 +399,24 @@ namespace CheatCraftFromNearbyContainers
             List<int> candidateInventoryIds = [];
             List<WorldObject> candidateGetInventoryOfWorldObject = [];
             HashSet<int> seen = [];
-            List<string> prefixes = GetPrefixes();
+            var planetId = 0;
+            var pl = Managers.GetManager<PlanetLoader>();
+            if (pl != null)
+            {
+                var cp = pl.GetCurrentPlanetData();
+                if (cp != null)
+                {
+                    planetId = cp.GetPlanetHash();
+                }
+            }
+            var isClient = !(NetworkManager.Singleton?.IsServer ?? true);
+            var currentPlanetOnlyFlag = currentPlanetOnly.Value;
+
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
                 var grid = wo.GetGroup().GetId();
                 var wpos = Vector3.zero;
+
                 if (wo.GetIsPlaced())
                 {
                     wpos = wo.GetPosition();
@@ -380,24 +431,34 @@ namespace CheatCraftFromNearbyContainers
                 }
                 var dist = Vector3.Distance(pos, wpos);
 
-                if ((grid.StartsWith("Container") || CheckGIDList(grid, prefixes))
-                    && dist <= range.Value
+                if (dist <= range.Value &&
+                    (grid.StartsWith("Container", StringComparison.Ordinal) 
+                        || CheckGIDList(grid))
                 )
                 {
-                    if (seen.Add(wo.GetId()))
+                    var ph = fWorldObjectPlanetHash(wo);
+                    if (isClient && ph == 0)
                     {
-                        Log("  Found Container " + wo.GetId() + " (" + wo.GetGroup().GetId() + ") @ " + dist + " m");
-                        if (wo.GetLinkedInventoryId() != 0)
+                        ModNetworking.SendHost(funcGetWorldObjectPlanetHash, wo.GetId().ToString());
+                    }
+
+                    if (!currentPlanetOnlyFlag || planetId == ph)
+                    {
+                        if (seen.Add(wo.GetId()))
                         {
-                            candidateInventoryIds.Add(wo.GetLinkedInventoryId());
-                            if (wo.GetSecondaryInventoriesId().Count != 0)
+                            Log("  Found Container " + wo.GetId() + " (" + wo.GetGroup().GetId() + ") @ " + dist + " m");
+                            if (wo.GetLinkedInventoryId() != 0)
                             {
-                                candidateInventoryIds.AddRange(wo.GetSecondaryInventoriesId());
+                                candidateInventoryIds.Add(wo.GetLinkedInventoryId());
+                                if (wo.GetSecondaryInventoriesId().Count != 0)
+                                {
+                                    candidateInventoryIds.AddRange(wo.GetSecondaryInventoriesId());
+                                }
                             }
-                        }
-                        else
-                        {
-                            candidateGetInventoryOfWorldObject.Add(wo);
+                            else
+                            {
+                                candidateGetInventoryOfWorldObject.Add(wo);
+                            }
                         }
                     }
                 }
@@ -408,23 +469,34 @@ namespace CheatCraftFromNearbyContainers
                 + candidateGetInventoryOfWorldObject.Count
                 + " = " + (candidateInventoryIds.Count + candidateGetInventoryOfWorldObject.Count));
 
+            var invh = InventoriesHandler.Instance;
             var inventoryList = new List<Inventory>();
-            foreach (var iid in candidateInventoryIds)
+            if (isClient)
             {
-                InventoriesHandler.Instance.GetInventoryById(iid, inventoryList.Add);
+                foreach (var iid in candidateInventoryIds)
+                {
+                    invh.GetInventoryById(iid, inventoryList.Add);
+                }
+            }
+            else
+            {
+                foreach (var iid in candidateInventoryIds)
+                {
+                    inventoryList.Add(invh.GetInventoryById(iid));
+                }
             }
             foreach (var wo in candidateGetInventoryOfWorldObject)
             {
-                InventoriesHandler.Instance.GetWorldObjectInventory(wo, inventoryList.Add);
+                    invh.GetWorldObjectInventory(wo, inventoryList.Add);
             }
             parent.StartCoroutine(GetInventoriesInRangeWait(candidateInventoryIds.Count + candidateGetInventoryOfWorldObject.Count, inventoryList, onComplete));
         }
 
-        static bool CheckGIDList(string grid, List<string> prefixes)
+        static bool CheckGIDList(string grid)
         {
-            foreach (var prefix in prefixes)
+            foreach (var prefix in includeFilterArray)
             {
-                if (grid.StartsWith(prefix))
+                if (grid.StartsWith(prefix, StringComparison.Ordinal))
                 {
                     return true;
                 }
@@ -468,6 +540,7 @@ namespace CheatCraftFromNearbyContainers
             ActionCrafter sourceCrafter,
             PlayerMainController playerController,
             GroupItem groupItem,
+            bool checkSpawnPosition,
             ref bool ____crafting,
             ref bool __result)
         {
@@ -492,8 +565,15 @@ namespace CheatCraftFromNearbyContainers
             {
                 ____crafting = true;
 
-                WorldObjectsHandler.Instance.CreateAndInstantiateWorldObject(groupItem, sourceCrafter.GetSpawnPosition(),
-                    sourceCrafter.GetSpawnRotation(), true, true, true, newSpawnedObject =>
+                WorldObjectsHandler.Instance.CreateAndInstantiateWorldObject(
+                    groupItem, 
+                    sourceCrafter.GetSpawnPosition(),
+                    sourceCrafter.GetSpawnRotation(), 
+                    disolve: true,
+                    checkSpawnPosition, 
+                    save: true, 
+                    addDeconstructIcon: false, 
+                    newSpawnedObject =>
                 {
                     if (newSpawnedObject != null)
                     {
@@ -525,7 +605,7 @@ namespace CheatCraftFromNearbyContainers
             foreach (var gr in ingredients)
             {
                 bool found = false;
-                foreach (var wo in backpackInv.GetInsideWorldObjects())
+                foreach (var wo in fInventoryWorldObjectsInInventory(backpackInv))
                 {
                     if (wo.GetGroup() == gr)
                     {
@@ -540,7 +620,7 @@ namespace CheatCraftFromNearbyContainers
                 }
                 if (!found && equipmentInv != null)
                 {
-                    foreach (var wo in equipmentInv.GetInsideWorldObjects())
+                    foreach (var wo in fInventoryWorldObjectsInInventory(equipmentInv))
                     {
                         if (wo.GetGroup() == gr)
                         {
@@ -561,7 +641,7 @@ namespace CheatCraftFromNearbyContainers
                         if (inv != null)
                         {
                             bool found2 = false;
-                            foreach (var wo in inv.GetInsideWorldObjects())
+                            foreach (var wo in fInventoryWorldObjectsInInventory(inv))
                             {
                                 if (wo.GetGroup() == gr)
                                 {
@@ -840,7 +920,19 @@ namespace CheatCraftFromNearbyContainers
                 var pos = Managers.GetManager<PlayersManager>().GetActivePlayerController().transform.position;
                 candidateInventories = [];
                 HashSet<int> seen = [];
-                List<string> prefixes = GetPrefixes();
+
+                var planetId = 0;
+                var pl = Managers.GetManager<PlanetLoader>();
+                if (pl != null)
+                {
+                    var cp = pl.GetCurrentPlanetData();
+                    if (cp != null)
+                    {
+                        planetId = cp.GetPlanetHash();
+                    }
+                }
+                var isClient = !(NetworkManager.Singleton?.IsServer ?? true);
+                var currentPlanetOnlyFlag = currentPlanetOnly.Value;
 
                 foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
                 {
@@ -860,21 +952,31 @@ namespace CheatCraftFromNearbyContainers
                     }
                     var dist = Vector3.Distance(pos, wpos);
 
-                    if ((grid.StartsWith("Container") || CheckGIDList(grid, prefixes))
+                    if ((grid.StartsWith("Container", StringComparison.Ordinal) 
+                        || CheckGIDList(grid))
                         && dist <= range.Value
                     )
                     {
-                        if (seen.Add(wo.GetId()))
+                        var ph = fWorldObjectPlanetHash(wo);
+                        if (isClient && ph == 0)
                         {
-                            var iid = wo.GetLinkedInventoryId();
-                            Log("  Found Container " + wo.GetId() + " (" + wo.GetGroup().GetId() + ") @ " + dist + " m, IID: " + iid);
-                            if (iid != 0)
+                            ModNetworking.SendHost(funcGetWorldObjectPlanetHash, wo.GetId().ToString());
+                        }
+
+                        if (!currentPlanetOnlyFlag || planetId == ph)
+                        {
+                            if (seen.Add(wo.GetId()))
                             {
-                                candidateInventories.Add(InventoriesHandler.Instance.GetInventoryById(iid));
-                                
-                                foreach (var iid2 in wo.GetSecondaryInventoriesId())
+                                var iid = wo.GetLinkedInventoryId();
+                                Log("  Found Container " + wo.GetId() + " (" + wo.GetGroup().GetId() + ") @ " + dist + " m, IID: " + iid);
+                                if (iid != 0)
                                 {
-                                    candidateInventories.Add(InventoriesHandler.Instance.GetInventoryById(iid2));
+                                    candidateInventories.Add(InventoriesHandler.Instance.GetInventoryById(iid));
+
+                                    foreach (var iid2 in wo.GetSecondaryInventoriesId())
+                                    {
+                                        candidateInventories.Add(InventoriesHandler.Instance.GetInventoryById(iid2));
+                                    }
                                 }
                             }
                         }
@@ -979,7 +1081,7 @@ namespace CheatCraftFromNearbyContainers
             PlayerBuilder __instance, 
             GroupConstructible ___ghostGroupConstructible)
         {
-            foreach (var wo in inv.GetInsideWorldObjects())
+            foreach (var wo in fInventoryWorldObjectsInInventory(inv))
             {
                 if (wo.GetGroup() == ___ghostGroupConstructible)
                 {
@@ -1051,41 +1153,45 @@ namespace CheatCraftFromNearbyContainers
             var cw = new CallbackWaiter();
             for (; ; )
             {
-                var pm = Managers.GetManager<PlayersManager>();
-                if (pm != null)
+                if (___groupsAdded.Count != 0)
                 {
-                    var ac = pm.GetActivePlayerController();
-                    if (ac != null)
+                    var pm = Managers.GetManager<PlayersManager>();
+                    if (pm != null)
                     {
-                        var pos = ac.transform.position;
-
-                        cw.Reset();
-                        GetInventoriesInRange(__instance, pos, list =>
+                        var ac = pm.GetActivePlayerController();
+                        if (ac != null)
                         {
-                            try
-                            {
-                                candidateInventories = list;
+                            var pos = ac.transform.position;
 
-                                for (int i = 0; i < ___groupsAdded.Count; i++)
+                            cw.Reset();
+                            GetInventoriesInRange(__instance, pos, list =>
+                            {
+                                try
                                 {
-                                    var gr = ___groupsAdded[i];
-                                    var id = ___informationDisplayers[i];
+                                    candidateInventories = list;
+                                    UpdateCounters();
 
-                                    id.SetGroupListGroupsAvailability(
-                                        _inventory.ItemsContainsStatus(gr.GetRecipe().GetIngredientsGroupInRecipe())
-                                    );
+                                    for (int i = 0; i < ___groupsAdded.Count; i++)
+                                    {
+                                        var gr = ___groupsAdded[i];
+                                        var id = ___informationDisplayers[i];
+
+                                        id.SetGroupListGroupsAvailability(
+                                            GetRecipeStatus(gr.GetRecipe().GetIngredientsGroupInRecipe())
+                                        );
+                                    }
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                logger.LogError(ex);
-                            }
-                            cw.Done();
-                        });
+                                catch (Exception ex)
+                                {
+                                    logger.LogError(ex);
+                                }
+                                cw.Done();
+                            });
 
-                        while (!cw.IsDone)
-                        {
-                            yield return null;
+                            while (!cw.IsDone)
+                            {
+                                yield return null;
+                            }
                         }
                     }
                 }
@@ -1095,31 +1201,76 @@ namespace CheatCraftFromNearbyContainers
 
         }
 
-        /* Fixed in 1.002
-        // Workaround for the method as it may crash if the woId no longer exists.
-        // We temporarily restore an empty object for the duration of the method
-        // so it can see no inventory and respond accordingly.
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(InventoriesHandler), "GetOrCreateNewInventoryServerRpc", [typeof(int), typeof(ServerRpcParams)])]
-        static void InventoriesHandler_GetOrCreateNewInventoryServerRpc_Pre(int woId, ref bool __state)
+        static readonly DictionaryCounter inventoryCounts = new(1024);
+        static readonly DictionaryCounter usedUp = new(32);
+
+        static List<bool> GetRecipeStatus(List<Group> recipe)
         {
-            if (!WorldObjectsHandler.Instance.GetAllWorldObjects().ContainsKey(woId))
+            var result = new List<bool>(recipe.Count);
+            usedUp.Clear();
+
+            foreach (var g in recipe)
             {
-                WorldObjectsHandler.Instance.GetAllWorldObjects()[woId] = new WorldObject(woId, null);
-                __state = true;
+                int c = inventoryCounts.CountOf(g.id);
+                int u = usedUp.CountOf(g.id);
+                if (c > u)
+                {
+                    result.Add(true);
+                    usedUp.Update(g.id);
+                }
+                else
+                {
+                    result.Add(false);
+                }
+            }
+
+            return result;
+        }
+
+
+        static void UpdateCounters()
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm == null)
+            {
+                return;
+            }
+            var player = pm.GetActivePlayerController();
+            if (player == null)
+            {
+                return;
+            }
+            var backpack = player.GetPlayerBackpack();
+            if (backpack == null)
+            {
+                return;
+            }
+            Inventory inventory = backpack.GetInventory();
+            if (inventory == null)
+            {
+                return;
+            }
+
+            inventoryCounts.Clear();
+
+            foreach (WorldObject wo in fInventoryWorldObjectsInInventory(inventory))
+            {
+                inventoryCounts.Update(wo.GetGroup().id);
+            }
+
+            foreach (var inv in candidateInventories)
+            {
+                if (inv != null)
+                {
+                    foreach (var wo in fInventoryWorldObjectsInInventory(inv))
+                    {
+                        inventoryCounts.Update(wo.GetGroup().id);
+                    }
+                }
             }
         }
 
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(InventoriesHandler), "GetOrCreateNewInventoryServerRpc", [typeof(int), typeof(ServerRpcParams)])]
-        static void InventoriesHandler_GetOrCreateNewInventoryServerRpc_Post(int woId, ref bool __state)
-        {
-            if (__state)
-            {
-                WorldObjectsHandler.Instance.GetAllWorldObjects().Remove(woId);
-            }
-        }
-        */
+
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(UiWorldInstanceSelector), nameof(UiWorldInstanceSelector.SetValues))]
@@ -1164,6 +1315,58 @@ namespace CheatCraftFromNearbyContainers
         static void BlackScreen_DisplayLogoStudio()
         {
             Patch_UiWindowPause_OnQuit();
+        }
+
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            ModNetworking._debugMode = debugMode.Value;
+            UpdateIncludeFilterList();
+            UpdateKeyBindings();
+        }
+
+        void OnGetWorldObjectPlanetHash(ulong sender, string parameters)
+        {
+            if (int.TryParse(parameters, out var id))
+            {
+                var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(id);
+                if (wo != null)
+                {
+                    ModNetworking.SendClient(sender, funcSetWorldObjectPlanetHash, id + "," + wo.GetPlanetHash());
+                }
+            }
+        }
+
+        void OnSetWorldObjectPlanetHash(ulong sender, string parameters)
+        {
+            var idHash = parameters.Split(',');
+            if (idHash.Length == 2)
+            {
+                if (int.TryParse(idHash[0], out var id) && int.TryParse(idHash[1], out var hash))
+                {
+                    var wo = WorldObjectsHandler.Instance.GetWorldObjectViaId(id);
+                    if (wo != null)
+                    {
+                        wo.SetPlanetHash(hash);
+                        Log("OnSetWorldObjectPlanetHash: " + id + " set to " + hash);
+                    }
+                    else
+                    {
+                        Log("OnSetWorldObjectPlanetHash: " + id + " not found for " + hash);
+                    }
+                    return;
+                }
+            }
+            Log("OnSetWorldObjectPlanetHash: format error: " + parameters);
+        }
+
+        static void UpdateKeyBindings()
+        {
+            if (!key.Value.Contains("<"))
+            {
+                key.Value = "<Keyboard>/" + key.Value;
+            }
+            toggleAction = new InputAction(name: "Toggle the ranged crafting", binding: key.Value);
+            toggleAction.Enable();
         }
     }
 }

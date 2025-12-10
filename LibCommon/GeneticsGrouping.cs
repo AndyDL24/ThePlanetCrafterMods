@@ -1,7 +1,9 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using SpaceCraft;
+using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -13,33 +15,48 @@ namespace LibCommon
     public static class GeneticsGrouping
     {
         /// <summary>
-        /// Generates a stack id that considers the genetic trait or DNA sequence information
+        /// Generates a stack id that considers the genetic trait, DNA sequence information
+        /// or blueprints
         /// as these should not stack based on their group id alone.
         /// </summary>
         /// <param name="wo"></param>
         /// <returns></returns>
         public static string GetStackId(WorldObject wo)
         {
-            var grid = wo.GetGroup().GetId();
-            if (grid == "GeneticTrait")
+            var grid = wo.GetGroup().id;
+            if (ReferenceEquals(grid, "GeneticTrait"))
             {
                 var sb = new StringBuilder(48);
                 sb.Append(grid).Append("_");
                 AppendTraitInfo(wo.GetGeneticTraitType(), wo.GetGeneticTraitValue(), wo.GetColor(), sb);
                 return sb.ToString();
             }
-            else if (grid == "DNASequence")
+            else if (ReferenceEquals(grid, "DNASequence"))
             {
                 var sb = new StringBuilder(128);
                 var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
                 if (inv != null)
                 {
                     sb.Append(grid);
-                    foreach (var wo2 in inv.GetInsideWorldObjects())
+                    List<WorldObject> traits = [.. inv.GetInsideWorldObjects()];
+                    traits.Sort(traitSorter);
+                    foreach (var wo2 in traits)
                     {
                         sb.Append('_');
                         AppendTraitInfo(wo2.GetGeneticTraitType(), wo2.GetGeneticTraitValue(), wo2.GetColor(), sb);
                     }
+                }
+                return sb.ToString();
+            }
+            else if (ReferenceEquals(grid, "BlueprintT1"))
+            {
+                var sb = new StringBuilder(128);
+                sb.Append(grid);
+                var lg = wo.GetLinkedGroups();
+                if (lg != null && lg.Count > 0)
+                {
+                    sb.Append('_');
+                    sb.Append(lg[0].id);
                 }
                 return sb.ToString();
             }
@@ -93,5 +110,7 @@ namespace LibCommon
                 sb.Append(value);
             }
         }
+
+        static readonly Comparison<WorldObject> traitSorter = (a, b) => a.GetGeneticTraitType().CompareTo(b.GetGeneticTraitType());
     }
 }

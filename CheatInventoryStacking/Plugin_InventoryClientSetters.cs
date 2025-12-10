@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
@@ -11,7 +11,7 @@ namespace CheatInventoryStacking
     public partial class Plugin
     {
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(InventoryAssociatedProxy), nameof(InventoryAssociated.GetInventory))]
+        [HarmonyPatch(typeof(InventoryAssociatedProxy), nameof(InventoryAssociatedProxy.GetInventory))]
         static void Patch_InventoryAssociatedProxy_GetInventory(
             InventoryAssociatedProxy __instance,
             ref Action<Inventory, WorldObject> callback
@@ -28,13 +28,13 @@ namespace CheatInventoryStacking
             {
                 try
                 {
-                    if (__instance.TryGetComponent<MachineGrower>(out _))
+                    if (__instance.TryGetComponent<MachineGrowerVegetationHarvestable>(out var mgvh))
                     {
-                        Patch_MachineGrower_SetGrowerInventory(inventory);
+                        Patch_MachineGrowerVegetationHarvestable_SetGrowerInventory(mgvh, inventory);
                     }
-                    if (__instance.TryGetComponent<MachineOutsideGrower>(out _))
+                    if (__instance.TryGetComponent<MachineGrowerVegetationStatic>(out _))
                     {
-                        Patch_MachineOutsideGrower_SetGrowerInventory(inventory);
+                        Patch_MachineGrowerVegetationStatic_SetGrowerInventory(inventory);
                     }
                     if (__instance.TryGetComponent<MachineGenerator>(out var mgn))
                     {
@@ -52,9 +52,9 @@ namespace CheatInventoryStacking
                     {
                         Patch_MachineAutoCrafter_SetAutoCrafterInventory(inventory);
                     }
-                    if (__instance.TryGetComponent<MachineTradePlatform>(out _))
+                    if (__instance.TryGetComponent<MachineRocketBackAndForth>(out var mrbaf))
                     {
-                        Patch_MachineTradePlatform_SetInventoryTradePlatform(inventory);
+                        Patch_MachineRocketBackAndForth_SetInventoryRocketBackAndForth(mrbaf, inventory);
                     }
                     if (__instance.TryGetComponent<MachineDestructInventoryIfFull>(out _))
                     {
@@ -64,9 +64,13 @@ namespace CheatInventoryStacking
                     {
                         Patch_MachineOptimizer_SetOptimizerInventory(inventory);
                     }
-                    if (__instance.TryGetComponent<MachineDisintegrator>(out _))
+                    if (__instance.TryGetComponent<MachineDisintegrator>(out var mds))
                     {
-                        Patch_MachineDisintegrator_SetDisintegratorInventory(inventory);
+                        Patch_MachineDisintegrator_SetDisintegratorInventory(mds, inventory);
+                    }
+                    if (!stackPlanetaryDepots.Value && (wo?.GetGroup()?.GetId().StartsWith("PlanetaryDeliveryDepot", StringComparison.Ordinal) ?? false))
+                    {
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
                 finally

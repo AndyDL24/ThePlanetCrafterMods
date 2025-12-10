@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -11,6 +11,9 @@ using UnityEngine;
 using System.Collections;
 using Unity.Netcode;
 using LibCommon;
+using System;
+using System.Diagnostics;
+using System.Linq;
 
 namespace CheatRecyclerRemoteDeposit
 {
@@ -26,6 +29,8 @@ namespace CheatRecyclerRemoteDeposit
 
         static ConfigEntry<bool> debugMode;
 
+        static ConfigEntry<bool> debugCoordinator;
+
         static ConfigEntry<string> defaultDepositAlias;
 
         static ConfigEntry<string> customDepositAliases;
@@ -34,12 +39,28 @@ namespace CheatRecyclerRemoteDeposit
 
         static ConfigEntry<int> maxRange;
 
+        static ConfigEntry<int> frameTimeLimit;
+
         static readonly Dictionary<string, string> aliasMap = [];
 
         static bool isRunning;
 
+        static Plugin me;
+
+        static readonly Dictionary<int, Coroutine> clearCoroutines = [];
+
+        static readonly Dictionary<ActionRecycle, Coroutine> autoRecycleCoroutines = [];
+
+        static bool calledFromOnHoverOut;
+
+        static AccessTools.FieldRef<MachineDisintegrator, Inventory> fMachineDisintegratorSecondInventory;
+
+        static AccessTools.FieldRef<Inventory, List<WorldObject>> fInventoryWorldObjectsInInventory;
+
         private void Awake()
         {
+            me = this;
+
             LibCommon.BepInExLoggerFix.ApplyFix();
 
             // Plugin startup logic
@@ -49,12 +70,20 @@ namespace CheatRecyclerRemoteDeposit
 
             modEnabled = Config.Bind("General", "Enabled", true, "Is the mod enabled?");
             debugMode = Config.Bind("General", "DebugMode", false, "Enable debug mode with detailed logging (chatty!)");
+            debugCoordinator = Config.Bind("General", "DebugCoordinator", false, "Enable coordinator logging (chatty!)");
             defaultDepositAlias = Config.Bind("General", "DefaultDepositAlias", "*Recycled", "The name of the container to deposit resources not explicity mentioned in CustomDepositAliases.");
             customDepositAliases = Config.Bind("General", "CustomDepositAliases", "", "Comma separated list of resource_id:alias to deposit into such named containers");
             autoRecyclePeriod = Config.Bind("General", "AutoRecyclePeriod", 5, "How often to auto-recycle, seconds. Zero means no auto-recycle.");
             maxRange = Config.Bind("General", "MaxRange", 20, "The maximum range to look for containers within. Zero means unlimited range.");
+            frameTimeLimit = Config.Bind("General", "FrameTimeLimit", 5000, "How much time is allowed to inspect the output inventories to avoid stutter, in microseconds");
+
+            fMachineDisintegratorSecondInventory = AccessTools.FieldRefAccess<MachineDisintegrator, Inventory>("_secondInventory");
+
+            fInventoryWorldObjectsInInventory = AccessTools.FieldRefAccess<Inventory, List<WorldObject>>("_worldObjectsInInventory");
 
             ParseAliasConfig();
+
+            CoroutineCoordinator.Init(LogCoord);
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             var h = Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -63,11 +92,41 @@ namespace CheatRecyclerRemoteDeposit
             ModNetworking.Patch(h);
             ModNetworking.RegisterFunction(FunctionRequestRecycle, OnClientAction);
 
+            LibCommon.ModPlanetLoaded.Patch(h, modGuid, _ => PlanetLoader_HandleDataAfterLoad());
+
             Logger.LogInfo($"Plugin is loaded!");
+        }
+
+        static void PlanetLoader_HandleDataAfterLoad()
+        {
+            foreach (var ar in FindObjectsByType<ActionRecycle>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (ar != null && ar.gameObject != null 
+                    && !ar.gameObject.activeInHierarchy
+                    && IsClone(ar.gameObject))
+                {
+                    Log("Manually Starting ActionRecycle looper for " + ar.GetInstanceID());
+                    ActionRecylce_Start(ar);
+                }
+            }
+        }
+
+        static bool IsClone(GameObject go)
+        {
+            while (go != null)
+            {
+                if (go.name.EndsWith("(Clone)"))
+                {
+                    return true;
+                }
+                go = go.transform.parent.gameObject;
+            }
+            return false;
         }
 
         static void ParseAliasConfig()
         {
+            aliasMap.Clear();
             var aliasesStr = customDepositAliases.Value.Trim();
             if (aliasesStr.Length > 0)
             {
@@ -83,7 +142,12 @@ namespace CheatRecyclerRemoteDeposit
             }
         }
 
-        static IEnumerable<Inventory> FindInventoryFor(string gid, Vector3 center)
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            ParseAliasConfig();
+        }
+
+        static IEnumerable<Inventory> FindInventoryFor(string gid, Vector3 center, int planetHash)
         {
             if (!aliasMap.TryGetValue(gid, out var name))
             {
@@ -94,16 +158,19 @@ namespace CheatRecyclerRemoteDeposit
 
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
-                var wot = wo.GetText();
-                if (wot != null && wot.ToLowerInvariant().Contains(name))
+                if (wo.GetPlanetHash() == planetHash)
                 {
-                    var xyz = wo.GetPosition();
-                    if (Vector3.Distance(xyz, center) < range || range == 0)
+                    var wot = wo.GetText();
+                    if (wot != null && wot.ToLowerInvariant().Contains(name))
                     {
-                        var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
-                        if (inv != null)
+                        var xyz = wo.GetPosition();
+                        if (Vector3.Distance(xyz, center) < range || range == 0)
                         {
-                            yield return inv;
+                            var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
+                            if (inv != null)
+                            {
+                                yield return inv;
+                            }
                         }
                     }
                 }
@@ -117,14 +184,15 @@ namespace CheatRecyclerRemoteDeposit
             Collider ___craftSpawn,
             GameObject ___tempCage)
         {
-            if (modEnabled.Value && __instance.GetComponentInParent<GhostFx>() == null)
+            if (modEnabled.Value && __instance.GetComponentInParent<GhostFx>(true) == null)
             {
                 Log("ActionRecycle.OnAction called");
                 if (!isRunning)
                 {
-                    var iap = __instance.GetComponentInParent<InventoryAssociatedProxy>();
-                    if (iap.IsSpawned)
+                    var iap = __instance.GetComponentInParent<InventoryAssociatedProxy>(true);
+                    if (iap != null && iap.IsSpawned)
                     {
+                        // Log("  via InventoryAssociatedProxy");
                         isRunning = true;
                         ___tempCage.SetActive(true);
 
@@ -135,6 +203,29 @@ namespace CheatRecyclerRemoteDeposit
                     {
                         Log("  IsSpawned = false");
                     }
+                    /*
+                    else
+                    {
+                        var woa = __instance.GetComponent<WorldObjectAssociated>();
+                        if (woa != null)
+                        {
+                            var wo = woa.GetWorldObject();
+                            var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
+
+                            Log("  via WorldObjectAssociated");
+
+                            isRunning = true;
+                            ___tempCage.SetActive(true);
+
+                            var depositor = new Depositor(__instance, ___craftSpawn);
+                            depositor.OnMachineReceived(inv, wo);
+                        }
+                        else
+                        {
+                            Log("  IsSpawned = false");
+                        }
+                    }
+                    */
                 }
                 else
                 {
@@ -149,26 +240,49 @@ namespace CheatRecyclerRemoteDeposit
         [HarmonyPatch(typeof(ActionRecycle), "Start")]
         static void ActionRecylce_Start(ActionRecycle __instance)
         {
-            if (modEnabled.Value)
+            ActionRecycle_OnDestroy(__instance);
+            autoRecycleCoroutines[__instance] = me.StartCoroutine(AutoRecycle_Loop(__instance));
+            Log("ActionRecycle::Start " + __instance.GetInstanceID());
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ActionRecycle), nameof(ActionRecycle.OnHoverOut))]
+        static void ActionRecycle_OnHoverOut()
+        {
+            calledFromOnHoverOut = true;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ActionRecycle), "OnDestroy")]
+        static void ActionRecycle_OnDestroy(ActionRecycle __instance)
+        {
+            var b = calledFromOnHoverOut;
+            calledFromOnHoverOut = false;
+            if (!b)
             {
-                var t = autoRecyclePeriod.Value;
-                if (t > 0)
+                if (autoRecycleCoroutines.Remove(__instance, out var coroutine))
                 {
-                    __instance.StartCoroutine(AutoRecycle_Loop(__instance, t));
+                    me.StopCoroutine(coroutine);
+                    Log("ActionRecycle::OnDestroy " + __instance.GetInstanceID());
                 }
             }
         }
 
-        static IEnumerator AutoRecycle_Loop(ActionRecycle __instance, int t)
+        static IEnumerator AutoRecycle_Loop(ActionRecycle __instance)
         {
             for (; ; )
             {
-                yield return new WaitForSeconds(t);
-                if (NetworkManager.Singleton?.IsServer ?? true)
+                // Log("ActionRecycle_Loop:1");
+                var ar = autoRecyclePeriod.Value;
+                yield return new WaitForSeconds(ar == 0 ? 5f : ar);
+                if (modEnabled.Value && ar > 0 && (NetworkManager.Singleton?.IsServer ?? true))
                 {
-                    if (__instance.GetComponentInParent<GhostFx>() == null)
+                    // Log("ActionRecycle_Loop:2");
+                    if (__instance.GetComponentInParent<GhostFx>(true) == null)
                     {
+                        // Log("ActionRecycle_Loop:3");
                         __instance.OnAction();
+                        // Log("ActionRecycle_Loop:4");
                     }
                 }
             }
@@ -231,6 +345,13 @@ namespace CheatRecyclerRemoteDeposit
             }
         }
 
+        static void LogCoord(object message)
+        {
+            if (debugCoordinator.Value)
+            {
+                logger.LogInfo(message);
+            }
+        }
 
         internal class Depositor
         {
@@ -268,24 +389,25 @@ namespace CheatRecyclerRemoteDeposit
                 if (!isServer)
                 {
                     isRunning = false;
-                    Log("Request Recycle " + machineWorldObject.GetId());
+                    Log("Request Recycle " + machineWorldObject.GetId() + " on " + machineWorldObject.GetPlanetHash());
                     ModNetworking.SendHost(FunctionRequestRecycle, machineWorldObject.GetId().ToString());
                     return;
                 }
 
 
-                Log("Begin " + machineWorldObject.GetId());
+                var n = fInventoryWorldObjectsInInventory(machineInventory).Count;
+                Log("Begin " + machineWorldObject.GetId() + " (" + n + ") on planet " + machineWorldObject.GetPlanetHash());
 
-                this.machinePosition = machineWorldObject.GetPosition();
-
-                if (machineInventory.GetInsideWorldObjects().Count == 0)
+                if (n == 0)
                 {
                     isRunning = false;
                     Log("    Nothing to recycle");
                     return;
                 }
 
-                toRecycleWo = machineInventory.GetInsideWorldObjects()[0];
+                machinePosition = machineWorldObject.GetPosition();
+
+                toRecycleWo = fInventoryWorldObjectsInInventory(machineInventory)[0];
                 var gi = toRecycleWo.GetGroup() as GroupItem;
                 var recipe = gi.GetRecipe().GetIngredientsGroupInRecipe();
 
@@ -337,7 +459,7 @@ namespace CheatRecyclerRemoteDeposit
                                 gid = ((Group)item).id;
                             }
 
-                            currentInventoryCandidates ??= FindInventoryFor(gid, machinePosition).GetEnumerator();
+                            currentInventoryCandidates ??= FindInventoryFor(gid, machinePosition, machineWorldObject.GetPlanetHash()).GetEnumerator();
 
                             if (currentInventoryCandidates.MoveNext())
                             {
@@ -429,6 +551,157 @@ namespace CheatRecyclerRemoteDeposit
                 instance.GetComponent<ActionnableInteractive>()?.OnActionInteractive();
                 Log("Done " + machineWorldObject.GetId());
             }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDisintegrator), nameof(MachineDisintegrator.SetDisintegratorInventory))]
+        static void Patch_MachineDisintegrator_SetDisintegratorInventory(
+            MachineDisintegrator __instance
+        )
+        {
+            var wo = __instance.GetComponent<WorldObjectAssociated>().GetWorldObject();
+            if (wo.GetGroup().GetId().StartsWith("RecyclingMachine", StringComparison.Ordinal))
+            {
+                var planetHash = wo.GetPlanetHash();
+                me.StartCoroutine(MachineDisintegrator_WaitForSecondInventory(__instance, planetHash, wo.GetPosition(), wo));
+            }
+        }
+
+        static IEnumerator MachineDisintegrator_WaitForSecondInventory(
+            MachineDisintegrator __instance, int planetHash, Vector3 pos, WorldObject machine)
+        {
+            bool requesting = false;
+            while (fMachineDisintegratorSecondInventory(__instance) == null)
+            {
+                if (__instance.secondInventoryAssociatedProxy.IsSpawned)
+                {
+                    if (!requesting)
+                    {
+                        requesting = true;
+                        __instance.secondInventoryAssociatedProxy.GetInventory((inv, _) =>
+                        {
+                            fMachineDisintegratorSecondInventory(__instance) = inv;
+                        });
+                    }
+                }
+                yield return null;
+            }
+
+            var inv = fMachineDisintegratorSecondInventory(__instance);
+            StartClearMachineInventory(inv, planetHash, pos, machine);
+        }
+
+        static void StartClearMachineInventory(Inventory inventory, int planetHash, Vector3 center, WorldObject machine)
+        {
+            StopClearMachineInventory(inventory);
+            var coroutine = me.StartCoroutine(ClearMachineInventory(inventory, planetHash, center, machine));
+            clearCoroutines[inventory.GetId()] = coroutine;
+            Log("StartClearMachineInventory: " + inventory.GetId() + ", planet " + planetHash);
+        }
+
+        static void StopClearMachineInventory(Inventory inventory)
+        {
+            if (inventory != null && clearCoroutines.Remove(inventory.GetId(), out var coroutine))
+            {
+                me.StopCoroutine(coroutine);
+                Log("StopClearMachineInventory: " + inventory.GetId() + " (remaining: " + clearCoroutines.Count + ")");
+            }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDisintegrator), "OnDestroy")]
+        static void MachineDisintegrator_OnDestroy(Inventory ____secondInventory)
+        {
+            StopClearMachineInventory(____secondInventory);
+            if (____secondInventory != null)
+            {
+                CoroutineCoordinator.Remove(CreateRoutineId(____secondInventory.GetId()));
+            }
+        }
+
+        static string CreateRoutineId(int id)
+        {
+            return "CheatRecyclerRemoteDeposit::ClearMachineInventory::" + id;
+        }
+
+        static IEnumerator ClearMachineInventory(Inventory _inventory, int planetHash, Vector3 center, WorldObject machine)
+        {
+            while (true)
+            {
+                // Server side is responsible for the transfer.
+                if (modEnabled.Value && InventoriesHandler.Instance != null && InventoriesHandler.Instance.IsServer)
+                {
+                    var timeLimit = frameTimeLimit.Value / 1000d;
+                    var items = fInventoryWorldObjectsInInventory(_inventory);
+
+                    var routineId = CreateRoutineId(_inventory.GetId());
+                    if (!CoroutineCoordinator.CanRun(routineId))
+                    {
+                        yield return null;
+                        continue;
+                    }
+
+                    var sw = Stopwatch.StartNew();
+
+                    Log("ClearMachineInventory begin: " + _inventory.GetId() + " on " + planetHash);
+
+                    for (int i = items.Count - 1; i >= 0; i--)
+                    {
+                        if (i < items.Count)
+                        {
+                            var item = items[i];
+                            var oreId = item.GetGroup().GetId();
+                            var candidateInv = FindInventoryFor(oreId, center, planetHash).FirstOrDefault();
+                            if (candidateInv != null)
+                            {
+                                Log("    Transfer of " + item.GetId() + " (" + item.GetGroup().GetId() + ") from " + _inventory.GetId() + " to " + candidateInv.GetId());
+                                InventoriesHandler.Instance.TransferItem(_inventory, candidateInv, item);
+                            }
+                        }
+                        // last yield check
+                        var elaps2 = sw.Elapsed.TotalMilliseconds;
+                        if (elaps2 > timeLimit)
+                        {
+                            CoroutineCoordinator.Yield(routineId, elaps2);
+                            do
+                            {
+                                yield return null;
+                            }
+                            while (!CoroutineCoordinator.CanRun(routineId));
+                            sw.Restart();
+                        }
+                    }
+                    Log("ClearMachineInventory end: " + _inventory.GetId() + " on " + planetHash + ", elapsed " + sw.Elapsed.TotalMilliseconds);
+
+                    // last yield check
+                    var elaps3 = sw.Elapsed.TotalMilliseconds;
+                    if (elaps3 > timeLimit)
+                    {
+                        CoroutineCoordinator.Yield(routineId, elaps3);
+                        do
+                        {
+                            yield return null;
+                        }
+                        while (!CoroutineCoordinator.CanRun(routineId));
+                    }
+
+                }
+                yield return new WaitForSeconds(autoRecyclePeriod.Value);
+            }
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiWindowPause), nameof(UiWindowPause.OnQuit))]
+        static void Patch_UiWindowPause_OnQuit()
+        {
+            CoroutineCoordinator.Clear();
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(BlackScreen), nameof(BlackScreen.DisplayLogoStudio))]
+        static void Patch_BlackScreen_DisplayLogoStudio()
+        {
+            Patch_UiWindowPause_OnQuit();
         }
     }
 }

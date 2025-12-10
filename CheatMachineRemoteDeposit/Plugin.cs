@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -11,19 +11,26 @@ using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using System.Collections;
 using UnityEngine;
+using System.Diagnostics;
+using LibCommon;
+using System.Linq;
 
 namespace CheatMachineRemoteDeposit
 {
-    [BepInPlugin("akarnokd.theplanetcraftermods.cheatmachineremotedeposit", "(Cheat) Machines Deposit Into Remote Containers", PluginInfo.PLUGIN_VERSION)]
+    [BepInPlugin(modCheatMachineRemoteDepositGuid, "(Cheat) Machines Deposit Into Remote Containers", PluginInfo.PLUGIN_VERSION)]
     [BepInDependency(modCheatInventoryStackingGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         const string modCheatInventoryStackingGuid = "akarnokd.theplanetcraftermods.cheatinventorystacking";
+        const string modCheatMachineRemoteDepositGuid = "akarnokd.theplanetcraftermods.cheatmachineremotedeposit";
+
+        static readonly Version stackingMinVersion = new(1, 0, 1, 92);
 
         static ManualLogSource logger;
 
         static ConfigEntry<bool> modEnabled;
         static ConfigEntry<bool> debugMode;
+        static ConfigEntry<bool> debugCoordinator;
 
         static readonly Dictionary<string, string> depositAliases = [];
 
@@ -33,22 +40,34 @@ namespace CheatMachineRemoteDeposit
         /// </summary>
         static Func<Inventory, string, bool> InventoryCanAdd;
 
-        /// <summary>
-        /// If set, the <see cref="MachineGenerator_GenerateAnObject(List{GroupData}, bool, WorldObject, List{GroupData}, ref WorldUnitsHandler, TerraformStage)"/>
-        /// won't be executed because the business logic has been taken care of by the stacking mod.
-        /// </summary>
-        static bool stackingOverridden;
-
-        /// <summary>
-        /// We need to know if the stackSize > 1 because otherwise stacking does nothing and we have to do it in
-        /// GenerateAnObject.
-        /// </summary>
-        static ConfigEntry<int> stackSize;
-
         static ConfigEntry<string> aliases;
+
+        static ConfigEntry<string> dumpName;
+
+        static ConfigEntry<int> period;
+
+        static ConfigEntry<int> frameTimeLimit;
+
+        static ConfigEntry<bool> balance;
+
+        static ConfigEntry<bool> sortSources;
+
+        static ConfigEntry<int> maxItems;
+
+        static Plugin me;
+
+        static AccessTools.FieldRef<MachineDisintegrator, Inventory> fMachineDisintegratorSecondInventory;
+
+        static readonly Dictionary<Inventory, int> clearInventoryAndPlanetHash = [];
+
+        static Coroutine clearCoroutine;
+
+        static AccessTools.FieldRef<Inventory, List<WorldObject>> fInventoryWorldObjectsInInventory;
 
         void Awake()
         {
+            me = this;
+
             LibCommon.BepInExLoggerFix.ApplyFix();
 
             // Plugin startup logic
@@ -58,8 +77,21 @@ namespace CheatMachineRemoteDeposit
 
             modEnabled = Config.Bind("General", "Enabled", true, "Is the mod enabled?");
             debugMode = Config.Bind("General", "DebugMode", false, "Produce detailed logs? (chatty)");
+            debugCoordinator = Config.Bind("General", "DebugCoordinator", false, "Produce coordinator logs? (chatty)");
 
             aliases = Config.Bind("General", "Aliases", "", "A comma separated list of resourceId:aliasForId, for example, Iron:A,Cobalt:B,Uranim:C");
+
+            dumpName = Config.Bind("General", "DumpName", "*Dump", "The name of the container to default deposit ores if no specific container was found.");
+
+            period = Config.Bind("General", "Period", 5, "How often should the machines be emptied?");
+
+            frameTimeLimit = Config.Bind("General", "FrameTimeLimit", 5000, "How much time is allowed to inspect the output inventories to avoid stutter, in microseconds");
+
+            balance = Config.Bind("General", "Balance", false, "If true, the inventory with the least items in it will receive the produce, resulting in somewhat uniform filling of multiple inventories.");
+
+            sortSources = Config.Bind("General", "SortSources", true, "If true, the machine's own inventory gets sorted before the deposition commences");
+
+            maxItems = Config.Bind("General", "MaxItems", 30, "The maximum number of items per source inventory to consider.");
 
             ProcessAliases(aliases);
 
@@ -71,29 +103,38 @@ namespace CheatMachineRemoteDeposit
             // determine if a stackable inventory can take an item.
             if (Chainloader.PluginInfos.TryGetValue(modCheatInventoryStackingGuid, out var info))
             {
+                if (info.Metadata.Version < stackingMinVersion)
+                {
+                    Logger.LogError("Inventory Stacking v" + info.Metadata.Version + " is incompatible with Machine Remote Deposit v" + PluginInfo.PLUGIN_VERSION);
+                    LibCommon.MainMenuMessage.Patch(new Harmony(modCheatMachineRemoteDepositGuid),
+                            "!!! Error !!!\n\n"
+                            + "The mod <color=#FFCC00>Machines Deposit Into Remote Containers</color> v" + PluginInfo.PLUGIN_VERSION
+                            + "\n\n        is incompatible with"
+                            + "\n\nthe mod <color=#FFCC00>Inventory Stacking</color> v" + info.Metadata.Version
+                            + "\n\nPlease make sure you have the latest version of both mods."
+                            );
+                    return;
+                }
+
                 Logger.LogInfo("Mod " + modCheatInventoryStackingGuid + " found, overriding FindInventoryForGroupID.");
 
                 var modType = info.Instance.GetType();
-
-                // make sure stacking knowns when this mod is enabled before calling that callback
-                AccessTools.Field(modType, "IsFindInventoryForGroupIDEnabled")
-                    .SetValue(null, new Func<bool>(() => modEnabled.Value));
-                // tell stacking to use this callback to find an inventory for a group id
-                AccessTools.Field(modType, "FindInventoryForGroupID")
-                    .SetValue(null, new Func<string, Inventory>(FindInventoryForOre));
 
                 // get the function that can tell if an inventory can't take one item of a provided group id
                 var apiIsFullStackedInventory = (Func<Inventory, string, bool>)AccessTools.Field(modType, "apiIsFullStackedInventory").GetValue(null);
                 // we need to logically invert it as we need it as "can-do"
                 InventoryCanAdd = (inv, gid) => !apiIsFullStackedInventory(inv, gid);
-
-                stackSize = (ConfigEntry<int>)AccessTools.Field(modType, "stackSize").GetValue(null);
-                stackingOverridden = true;
             }
             else
             {
                 Logger.LogInfo("Mod " + modCheatInventoryStackingGuid + " not found.");
             }
+
+            fMachineDisintegratorSecondInventory = AccessTools.FieldRefAccess<MachineDisintegrator, Inventory>("_secondInventory");
+
+            fInventoryWorldObjectsInInventory = AccessTools.FieldRefAccess<Inventory, List<WorldObject>>("_worldObjectsInInventory");
+
+            CoroutineCoordinator.Init(LogCoord);
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -135,98 +176,12 @@ namespace CheatMachineRemoteDeposit
                 logger.LogInfo(s);
             }
         }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(MachineGenerator), "GenerateAnObject")]
-        static bool MachineGenerator_GenerateAnObject(
-            List<GroupData> ___groupDatas,
-            bool ___setGroupsDataViaLinkedGroup,
-            WorldObject ___worldObject,
-            List<GroupData> ___groupDatasTerraStage,
-            ref WorldUnitsHandler ___worldUnitsHandler,
-            TerraformStage ___terraStage
-        )
+        static void LogCoord(string s)
         {
-            if (!modEnabled.Value)
+            if (debugCoordinator.Value)
             {
-                return true;
+                logger.LogInfo(s);
             }
-            if (stackingOverridden && stackSize.Value > 1)
-            {
-                return true;
-            }
-
-            Log("GenerateAnObject start");
-
-            if (___worldUnitsHandler == null)
-            {
-                ___worldUnitsHandler = Managers.GetManager<WorldUnitsHandler>();
-            }
-            if (___worldUnitsHandler == null)
-            {
-                return false;
-            }
-
-            Log("    begin ore search");
-
-            Group group = null;
-            if (___groupDatas.Count != 0)
-            {
-                List<GroupData> list = new(___groupDatas);
-                if (___groupDatasTerraStage.Count != 0 && ___worldUnitsHandler.IsWorldValuesAreBetweenStages(___terraStage, null))
-                {
-                    list.AddRange(___groupDatasTerraStage);
-                }
-                group = GroupsHandler.GetGroupViaId(list[UnityEngine.Random.Range(0, list.Count)].id);
-            }
-            if (___setGroupsDataViaLinkedGroup)
-            {
-                if (___worldObject.GetLinkedGroups() != null && ___worldObject.GetLinkedGroups().Count > 0)
-                {
-                    group = ___worldObject.GetLinkedGroups()[UnityEngine.Random.Range(0, ___worldObject.GetLinkedGroups().Count)];
-                }
-                else
-                {
-                    group = null;
-                }
-            }
-
-            // deposit the ore
-
-            if (group != null)
-            {
-                string oreId = group.id;
-
-                Log("    ore: " + oreId);
-
-                var inventory = FindInventoryForOre(oreId);                
-
-                if (inventory != null)
-                {
-                    InventoriesHandler.Instance.AddItemToInventory(group, inventory, (success, id) =>
-                    {
-                        if (!success)
-                        {
-                            Log("GenerateAnObject: Machine " + ___worldObject.GetId() + " could not add " + oreId + " to inventory " + inventory.GetId());
-                            if (id != 0)
-                            {
-                                WorldObjectsHandler.Instance.DestroyWorldObject(id);
-                            }
-                        }
-                    });
-                }
-                else
-                {
-                    Log("    No suitable inventory found, ore ignored");
-                }
-            }
-            else
-            {
-                Log("    ore: none");
-            }
-
-            Log("GenerateAnObject end");
-            return false;
         }
 
         /// <summary>
@@ -236,14 +191,14 @@ namespace CheatMachineRemoteDeposit
         /// MachineGenerator.TryToGenerate method.
         /// </summary>
         /// <param name="__instance"></param>
-        /// <param name="_inventory"></param>
+        /// <param name="inventory"></param>
         [HarmonyPostfix]
         [HarmonyPatch(typeof(MachineGenerator), nameof(MachineGenerator.SetGeneratorInventory))]
         static void MachineGenerator_SetGeneratorInventory(
-            MachineGenerator __instance, 
-            Inventory _inventory)
+            Inventory inventory,
+            WorldObject ____worldObject)
         {
-            __instance.StartCoroutine(ClearMachineGeneratorInventory(_inventory, __instance.spawnEveryXSec));
+            StartClearMachineInventory(inventory, ____worldObject.GetPlanetHash());
         }
 
         /// <summary>
@@ -252,89 +207,357 @@ namespace CheatMachineRemoteDeposit
         /// We have to also restart our inventory cleaning routine.
         /// </summary>
         /// <param name="__instance"></param>
-        /// <param name="___inventory"></param>
+        /// <param name="____inventory"></param>
         [HarmonyPostfix]
         [HarmonyPatch(typeof(MachineGenerator), nameof(MachineGenerator.AddToGenerationSpeedMultiplier))]
         static void MachineGenerator_AddToGenerationSpeedMultiplier(
-            MachineGenerator __instance,
-            Inventory ___inventory
+            Inventory ____inventory,
+            WorldObject ____worldObject
         )
         {
-            __instance.StartCoroutine(ClearMachineGeneratorInventory(___inventory, __instance.spawnEveryXSec));
+            StartClearMachineInventory(
+                ____inventory, ____worldObject.GetPlanetHash());
         }
 
-        static IEnumerator ClearMachineGeneratorInventory(Inventory _inventory, int delay)
+        static IEnumerator ClearMachineInventory()
         {
-            var wait = new WaitForSeconds(delay);
+            const string routineId = "CheatMachineRemoteDeposit::ClearMachineInventory";
             while (true)
             {
                 // Server side is responsible for the transfer.
-                if (modEnabled.Value && InventoriesHandler.Instance != null && InventoriesHandler.Instance.IsServer)
+                var invh = InventoriesHandler.Instance;
+                if (modEnabled.Value && invh != null && invh.IsServer)
                 {
-                    Log("ClearMachineGeneratorInventory begin: " + _inventory.GetId());
-                    var items = _inventory.GetInsideWorldObjects();
-
-                    for (int i = items.Count - 1; i >= 0; i--)
+                    var timeLimit = frameTimeLimit.Value / 1000d;
+                    while (!CoroutineCoordinator.CanRun(routineId))
                     {
-                        var item = items[i];
-                        var oreId = item.GetGroup().GetId();
-                        var candidateInv = FindInventoryForOre(oreId);
-                        if (candidateInv != null)
+                        yield return null;
+                    }
+
+                    var sw0 = Stopwatch.StartNew();
+                    var skips = 0;
+                    Log("ClearMachineInventory begin - " + clearInventoryAndPlanetHash.Count);
+
+                    var sw = Stopwatch.StartNew();
+                    var callback = new CallbackWaiter();
+                    Action<bool> callbackDone = callback.Done;
+
+                    var transferFailures = new Dictionary<Inventory, HashSet<string>>();
+
+                    var clearCopy = new List<Inventory>(clearInventoryAndPlanetHash.Keys);
+                    clearCopy.Sort(balancedSorter);
+                    foreach (var _inventory in clearCopy)
+                    {
+                        if (invh == null || invh.GetInventoryById(_inventory.GetId()) == null)
                         {
-                            Log("    Transfer of " + item.GetId() + " (" + item.GetGroup().GetId() + ") from " + _inventory.GetId() + " to " + candidateInv.GetId());
-                            InventoriesHandler.Instance.TransferItem(_inventory, candidateInv, item);
+                            continue;
+                        }
+                        if (!clearInventoryAndPlanetHash.TryGetValue(_inventory, out var planetHash))
+                        {
+                            continue;
+                        }
+                        var items = fInventoryWorldObjectsInInventory(_inventory);
+                        var originalCount = items.Count;
+                        if (originalCount != 0)
+                        {
+                            if (sortSources.Value)
+                            {
+                                _inventory.AutoSort();
+                            }
+                            var elaps0 = sw.Elapsed.TotalMilliseconds;
+                            if (elaps0 > timeLimit)
+                            {
+                                skips++;
+                                Log("      --- yield (inv) --- " + elaps0);
+                                CoroutineCoordinator.Yield(routineId, elaps0);
+                                do
+                                {
+                                    yield return null;
+                                }
+                                while (!CoroutineCoordinator.CanRun(routineId));
+                                transferFailures.Clear();
+                                sw.Restart();
+                            }
+
+                            Log("  Begin: " + _inventory.GetId() + " on " + planetHash + " count " + originalCount);
+
+                            var lastOreId = "";
+                            var lastPlanetHash = 0;
+                            var mainList = default(List<Inventory>);
+                            var dumpList = default(List<Inventory>);
+
+                            int j = maxItems.Value;
+                            for (int i = items.Count - 1; i >= 0 && j >= 0; i--, j--)
+                            {
+                                if (i < items.Count)
+                                {
+                                    var elaps1 = sw.Elapsed.TotalMilliseconds;
+                                    if (elaps1 > timeLimit)
+                                    {
+                                        skips++;
+                                        Log("      --- yield (item) --- " + elaps1);
+                                        CoroutineCoordinator.Yield(routineId, elaps1);
+                                        do
+                                        {
+                                            yield return null;
+                                        }
+                                        while (!CoroutineCoordinator.CanRun(routineId));
+                                        transferFailures.Clear();
+                                        sw.Restart();
+                                    }
+
+                                    var item = items[i];
+                                    var oreId = item.GetGroup().GetId();
+                                    if (lastOreId != oreId || lastPlanetHash != planetHash)
+                                    {
+                                        lastOreId = oreId;
+                                        lastPlanetHash = planetHash;
+                                        (mainList, dumpList) = FindInventories(oreId, planetHash);
+                                    }
+                                    if (balance.Value)
+                                    {
+                                        mainList.Sort(balancedSorter);
+                                        dumpList.Sort(balancedSorter);
+                                    }
+
+                                    bool found = false;
+                                    foreach (var candidate in mainList.Concat(dumpList))
+                                    {
+                                        if (invh != null && invh.GetInventoryById(candidate.GetId()) != null)
+                                        {
+                                            var elaps2 = sw.Elapsed.TotalMilliseconds;
+                                            if (elaps2 > timeLimit)
+                                            {
+                                                skips++;
+                                                Log("      --- yield (candidate) --- " + elaps2);
+                                                CoroutineCoordinator.Yield(routineId, elaps2);
+                                                do
+                                                {
+                                                    yield return null;
+                                                }
+                                                while (!CoroutineCoordinator.CanRun(routineId));
+                                                transferFailures.Clear();
+                                                sw.Restart();
+                                            }
+
+                                            transferFailures.TryGetValue(candidate, out var set);
+
+                                            if (set == null || !set.Contains(oreId))
+                                            {
+                                                callback.Reset();
+                                                InventoriesHandler.Instance.TransferItem(_inventory, candidate, item, callbackDone);
+                                                while (!callback.IsDone)
+                                                {
+                                                    skips++;
+                                                    Log("      --- yield (transfer) ---");
+                                                    CoroutineCoordinator.Yield(routineId, 0);
+                                                    do
+                                                    {
+                                                        yield return null;
+                                                    }
+                                                    while (!CoroutineCoordinator.CanRun(routineId));
+                                                    transferFailures.Clear();
+                                                }
+                                                if (callback.IsSuccess)
+                                                {
+                                                    Log("    Transfer of " + item.GetId() + " (" + item.GetGroup().GetId() + ") from " + _inventory.GetId() + " to " + candidate.GetId());
+                                                    found = true;
+                                                    break;
+                                                }
+                                                else
+                                                {
+                                                    if (set == null)
+                                                    {
+                                                        set = [];
+                                                        transferFailures[candidate] = set;
+                                                    }
+                                                    set.Add(oreId);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (!found)
+                                    {
+                                        Log("    Transfer of " + item.GetId() + " (" + item.GetGroup().GetId() + ") from " + _inventory.GetId() + " failed due to lack of inventory space");
+                                    }
+                                }
+                            }
+                            Log("  End: " + _inventory.GetId() + " on " + planetHash + " count " + originalCount + ", elapsed " + sw.Elapsed.TotalMilliseconds + ", skips " + skips);
                         }
                     }
-                    Log("ClearMachineGeneratorInventory end: " + _inventory.GetId());
+                    Log("ClearMachineInventory end - " + clearInventoryAndPlanetHash.Count + " in " + sw0.Elapsed.TotalMilliseconds + " skips " + skips);
+
+                    // last yield check
+                    var elaps3 = sw.Elapsed.TotalMilliseconds;
+                    if (elaps3 > timeLimit)
+                    {
+                        Log("      --- yield (final) --- " + elaps3);
+                        CoroutineCoordinator.Yield(routineId, elaps3);
+                        do
+                        {
+                            yield return null;
+                        }
+                        while (!CoroutineCoordinator.CanRun(routineId));
+                    }
                 }
-                yield return wait;
+                yield return new WaitForSeconds(period.Value);
             }
         }
 
-        static Inventory FindInventoryForOre(string oreId)
-        {
-            var containerNameFilter = "*" + oreId.ToLower();
-            if (depositAliases.TryGetValue(oreId, out var alias))
-            {
-                containerNameFilter = alias;
-                Log("    Ore " + oreId + " -> Alias " + alias);
-            }
 
-            foreach (var constructs in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
+        static (List<Inventory> main, List<Inventory> dump) FindInventories(string oreId, int planetHash)
+        {
+            var mainList = new List<Inventory>();
+            var dumpList = new List<Inventory>();
+
+            var invh = InventoriesHandler.Instance;
+            if (invh != null)
             {
-                if (constructs != null && constructs.GetGroup().GetId().StartsWith("Container") 
-                    && constructs.HasLinkedInventory())
+                var sw = Stopwatch.StartNew();
+
+
+                var containerNameFilter = "*" + oreId;
+                if (depositAliases.TryGetValue(oreId, out var alias))
                 {
-                    string txt = constructs.GetText();
-                    if (txt != null && txt.Contains(containerNameFilter, StringComparison.InvariantCultureIgnoreCase))
+                    containerNameFilter = alias;
+                    Log("    Ore " + oreId + " -> Alias " + alias);
+                }
+                var dumpContainerName = dumpName.Value;
+                var worldObjects = WorldObjectsHandler.Instance.GetConstructedWorldObjects();
+
+                // Log("  Begin FindInventories - " + worldObjects.Count + " constructs");
+
+
+                foreach (var constructs in worldObjects)
+                {
+                    if (constructs != null
+                        && constructs.GetGroup().GetId().StartsWith("Container", StringComparison.Ordinal)
+                        && constructs.HasLinkedInventory()
+                        && constructs.GetPlanetHash() == planetHash
+                        )
                     {
-                        Inventory candidateInventory = InventoriesHandler.Instance.GetInventoryById(constructs.GetLinkedInventoryId());
-                        if (candidateInventory != null && InventoryCanAdd(candidateInventory, oreId))
+                        var txt = constructs.GetText();
+                        if (txt != null)
                         {
-                            Log("    Found Inventory: " + candidateInventory.GetId() + " \"" + txt + "\"");
-                            return candidateInventory;
+                            if (txt.Contains(containerNameFilter, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                var inv = invh.GetInventoryById(constructs.GetLinkedInventoryId());
+                                mainList.Add(inv);
+                            }
+                            if (txt.Contains(dumpContainerName, StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                var inv = invh.GetInventoryById(constructs.GetLinkedInventoryId());
+                                dumpList.Add(inv);
+                            }
                         }
-                        else
-                        {
-                            Log("    This inventory is full: " + (candidateInventory?.GetId() ?? -1) + " \"" + txt + "\"");
-                        }
-                    }
-                    else if (!string.IsNullOrWhiteSpace(txt))
-                    {
-                        Log("    This inventory does not have the right name: " + txt);
                     }
                 }
+                Log("    FindInventories: main = " + mainList.Count + ", dump = " + dumpList.Count + " in " + sw.Elapsed.TotalMilliseconds);
             }
-            return null;
+            return (mainList, dumpList);
         }
 
         [HarmonyPrefix]
-        [HarmonyPatch(typeof(MachineDisintegrator), "SetSecondInventory")]
-        static void MachineDisintegrator_SetSecondInventory(
-            MachineDisintegrator __instance, 
-            Inventory inventory)
+        [HarmonyPatch(typeof(MachineDisintegrator), nameof(MachineDisintegrator.SetDisintegratorInventory))]
+        static void Patch_MachineDisintegrator_SetDisintegratorInventory(
+            MachineDisintegrator __instance
+        )
         {
-            __instance.StartCoroutine(ClearMachineGeneratorInventory(inventory, 4));
+            var wo = __instance.GetComponent<WorldObjectAssociated>().GetWorldObject();
+            var gid = wo.GetGroup().GetId();
+            if (gid.StartsWith("OreBreaker", StringComparison.Ordinal)
+                || gid.StartsWith("DetoxificationMachine", StringComparison.Ordinal))
+            {
+                var planetHash = wo.GetPlanetHash();
+
+                me.StartCoroutine(MachineDisintegrator_WaitForSecondInventory(__instance, planetHash));
+            }
         }
+
+        static IEnumerator MachineDisintegrator_WaitForSecondInventory(
+            MachineDisintegrator __instance, int planetHash)
+        {
+            bool requesting = false;
+            while (fMachineDisintegratorSecondInventory(__instance) == null)
+            {
+                if (__instance.secondInventoryAssociatedProxy.IsSpawned)
+                {
+                    if (!requesting)
+                    {
+                        requesting = true;
+                        __instance.secondInventoryAssociatedProxy.GetInventory((inv, _) =>
+                        {
+                            fMachineDisintegratorSecondInventory(__instance) = inv;
+                        });
+                    }
+                }
+                yield return null;
+            }
+
+            var inv = fMachineDisintegratorSecondInventory(__instance);
+            StartClearMachineInventory(inv, planetHash);
+        }
+
+        static void StartClearMachineInventory(Inventory inventory, int planetHash)
+        {
+            if (inventory == null)
+            {
+                return;
+            }
+            clearInventoryAndPlanetHash[inventory] = planetHash;
+
+            if (clearInventoryAndPlanetHash.Count == 1)
+            {
+                clearCoroutine = me.StartCoroutine(ClearMachineInventory());
+            }
+            Log("StartClearMachineInventory: " + inventory.GetId() + ", delay " + period.Value + ", planet " + planetHash);
+        }
+
+        static void StopClearMachineInventory(Inventory inventory) 
+        {
+            if (inventory == null)
+            {
+                return;
+            }
+            if (clearInventoryAndPlanetHash.Remove(inventory))
+            {
+                Log("StopClearMachineInventory: " + inventory.GetId() + " (remaining: " + clearInventoryAndPlanetHash.Count + ")");
+            }
+            if (clearInventoryAndPlanetHash.Count == 0)
+            {
+                me.StopCoroutine(clearCoroutine);
+            }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineGenerator), "OnDestroy")]
+        static void MachineGenerator_OnDestroy(Inventory ____inventory)
+        {
+            StopClearMachineInventory(____inventory);
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(MachineDisintegrator), "OnDestroy")]
+        static void MachineDisintegrator_OnDestroy(Inventory ____secondInventory)
+        {
+            StopClearMachineInventory(____secondInventory);
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UiWindowPause), nameof(UiWindowPause.OnQuit))]
+        static void Patch_UiWindowPause_OnQuit()
+        {
+            CoroutineCoordinator.Clear();
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(BlackScreen), nameof(BlackScreen.DisplayLogoStudio))]
+        static void Patch_BlackScreen_DisplayLogoStudio()
+        {
+            Patch_UiWindowPause_OnQuit();
+        }
+
+        static readonly Comparison<Inventory> balancedSorter = (a, b) => a.GetInsideWorldObjects().Count.CompareTo(b.GetInsideWorldObjects().Count);
     }
 }

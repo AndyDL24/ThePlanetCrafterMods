@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -18,8 +18,6 @@ using Unity.Netcode;
 using BepInEx.Bootstrap;
 using LibCommon;
 using System.Text;
-using HarmonyLib.Tools;
-using System.Collections;
 
 namespace UIPinRecipe
 {
@@ -103,32 +101,36 @@ namespace UIPinRecipe
         {
             for (; ; )
             {
-                nearbyInventories = [];
-                if (apiGetInventoriesInRange != null)
+                if (pinnedRecipes.Count != 0)
                 {
-                    var pm = Managers.GetManager<PlayersManager>();
-                    if (pm != null)
+                    nearbyInventories = [];
+                    if (apiGetInventoriesInRange != null)
                     {
-                        var ac = pm.GetActivePlayerController();
-                        if (ac != null)
+                        var pm = Managers.GetManager<PlayersManager>();
+                        if (pm != null)
                         {
-                            var callbackWaiter = new CallbackWaiter();
-                            apiGetInventoriesInRange(this, ac.transform.position, list =>
+                            var ac = pm.GetActivePlayerController();
+                            if (ac != null)
                             {
-                                nearbyInventories = list;
-                                callbackWaiter.Done();
-                            });
+                                var callbackWaiter = new CallbackWaiter();
+                                apiGetInventoriesInRange(this, ac.transform.position, list =>
+                                {
+                                    nearbyInventories = list;
+                                    callbackWaiter.Done();
+                                });
 
-                            while (!callbackWaiter.IsDone)
-                            {
-                                yield return null;
+                                while (!callbackWaiter.IsDone)
+                                {
+                                    yield return null;
+                                }
                             }
                         }
                     }
-                }
-                foreach (PinnedRecipe pr in pinnedRecipes)
-                {
-                    pr.UpdateState();
+                    UpdateCounters();
+                    foreach (PinnedRecipe pr in pinnedRecipes)
+                    {
+                        pr.UpdateState();
+                    }
                 }
                 yield return new WaitForSeconds(0.25f);
             }
@@ -148,6 +150,51 @@ namespace UIPinRecipe
                 {
                     ClearPinnedRecipes();
                     SavePinnedRecipes();
+                }
+            }
+        }
+
+        static readonly DictionaryCounter inventoryCounts = new(1024);
+        static readonly DictionaryCounter equipmentCounts = new(32);
+
+        static void UpdateCounters()
+        {
+            var pm = Managers.GetManager<PlayersManager>();
+            if (pm == null)
+            {
+                return;
+            }
+            var player = pm.GetActivePlayerController();
+            if (player == null)
+            {
+                return;
+            }
+            var backpack = player.GetPlayerBackpack();
+            if (backpack == null)
+            {
+                return;
+            }
+            Inventory inventory = backpack.GetInventory();
+            if (inventory == null)
+            {
+                return;
+            }
+
+            inventoryCounts.Clear();
+
+            foreach (WorldObject wo in inventory.GetInsideWorldObjects())
+            {
+                inventoryCounts.Update(wo.GetGroup().id);
+            }
+
+            foreach (var inv in nearbyInventories)
+            {
+                if (inv != null)
+                {
+                    foreach (var wo in inv.GetInsideWorldObjects())
+                    {
+                        inventoryCounts.Update(wo.GetGroup().id);
+                    }
                 }
             }
         }
@@ -197,52 +244,26 @@ namespace UIPinRecipe
                 {
                     return;
                 }
-                var backpack = player.GetPlayerBackpack();
-                if (backpack == null)
-                {
-                    return;
-                }
-                Inventory inventory = backpack.GetInventory();
-                if (inventory == null)
-                {
-                    return;
-                }
-
-                Dictionary<string, int> inventoryCounts = [];
-                foreach (WorldObject wo in inventory.GetInsideWorldObjects())
-                {
-                    string gid = wo.GetGroup().GetId();
-                    inventoryCounts.TryGetValue(gid, out int c);
-                    inventoryCounts[gid] = c + 1;
-                }
-
+                bool includeEquipment = false;
+                equipmentCounts.Clear();
                 if (group is GroupItem gi && gi.GetEquipableType() != DataConfig.EquipableType.Null)
                 {
+                    includeEquipment = true;
                     foreach (WorldObject wo in player.GetPlayerEquipment().GetInventory().GetInsideWorldObjects())
                     {
-                        string gid = wo.GetGroup().GetId();
-                        inventoryCounts.TryGetValue(gid, out int c);
-                        inventoryCounts[gid] = c + 1;
+                        equipmentCounts.Update(wo.GetGroup().id);
                     }
                 }
 
-                foreach (var inv in nearbyInventories)
-                {
-                    if (inv != null)
-                    {
-                        foreach (var wo in inv.GetInsideWorldObjects())
-                        {
-                            string gid = wo.GetGroup().GetId();
-                            inventoryCounts.TryGetValue(gid, out int c);
-                            inventoryCounts[gid] = c + 1;
-                        }
-                    }
-                }
 
                 int craftableCount = int.MaxValue;
                 foreach (TextSpriteBackground comp in components)
                 {
-                    inventoryCounts.TryGetValue(comp.group.id, out int c);
+                    int c = inventoryCounts.CountOf(comp.group.id);
+                    if (includeEquipment) {
+                        c += equipmentCounts.CountOf(comp.group.id);
+                    }
+
                     comp.text.GetComponent<Text>().text = Readable.GetGroupName(comp.group) + " x " + comp.count + " ( " + c + " )";
 
                     craftableCount = Mathf.Min(craftableCount, c / comp.count);
@@ -252,7 +273,11 @@ namespace UIPinRecipe
                     craftableCount = 0;
                 }
 
-                inventoryCounts.TryGetValue(group.GetId(), out int productCount);
+                var productCount = inventoryCounts.CountOf(group.id);
+                if (includeEquipment)
+                {
+                    productCount += equipmentCounts.CountOf(group.id);
+                }
                 product.text.GetComponent<Text>().text =
                     Readable.GetGroupName(group) + " ( " + productCount + " ) < " + craftableCount + " >";
             }
@@ -481,7 +506,10 @@ namespace UIPinRecipe
         static void VisualsToggler_ToggleUi(List<GameObject> ___uisToHide)
         {
             bool active = ___uisToHide[0].activeSelf;
-            parent?.SetActive(active);
+            if (parent != null)
+            {
+                parent.SetActive(active);
+            }
         }
 
         static WorldObject EnsureHiddenContainer()

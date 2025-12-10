@@ -10,11 +10,13 @@ BepInEx+Harmony mods for the Unity/Steam game The Planet Crafter
 
 :arrow_down_small: Download files from the releases: https://github.com/akarnokd/ThePlanetCrafterMods/releases/latest
 
-## Supported Game Version: 1.316 or later
+## Supported Game Version: 1.613 or later
 
-With or without the DLC.
+With or without any of the DLCs.
 
 This repo only supports the very latest Steam or GoG releases.
+
+If you pirated the game, I cannot help you. Please buy the game.
 
 ## Preparation
 
@@ -42,6 +44,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 ### Content
 
 - [Command Console](#feat-command-console)
+- [Flatlands](#feat-flatlands)
 - [Technician's Exile](#feat-technicians-exile)
 - [Space Cows](#feat-space-cows)
 - [Plugin Update Checker](https://github.com/akarnokd/ThePlanetCrafterMods/wiki/%28Misc%29-Plugin-Update-Checker)
@@ -81,6 +84,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Overview Panel](#ui-overview-panel)
 - [Pin Recipe to Screen](#ui-pin-recipe-to-screen)
 - [Prevent Accidental Deconstruct](#ui-prevent-accidental-deconstruct)
+- [Quick Loot](#ui-quick-loot)
 - [Save When Quitting](#ui-save-when-quitting)
 - [Show Consumable Counts](#ui-show-consumable-counts)
 - [Show Container Content Info](#ui-show-container-content-info)
@@ -118,6 +122,7 @@ The new Unity version the game uses has a feature/bug that prevents **all mods**
 - [Quick Save](#save-quick-save)
 - [Startup Performance](#perf-startup)
 - [Unofficial Patches](#fix-unofficial-patches)
+- [Async Save](#save-async-save)
 
 ### Mods from former Modders
 
@@ -292,7 +297,7 @@ DebugMode = false
 
 Automatically sequences DNA in the Sequencer or Incubator by collecting ingredients
 from marked container(s), starting the sequencing process, then depositing the product
-into marked container(s).
+into marked container(s). It can also extract DNA Traits automatically via the DNA Extractor.
 
 One marks a container by changing its text field to something specific. By default, the
 following naming convention is used (can be changed in the config file):
@@ -306,6 +311,10 @@ On the recipe side:
 - `*Phytoplankton` - where the various *Phytoplankton* ingredients are searched for.
 - `*Bacteria` - where the *Bacteria* ingredient is searched for.
 - `*FrogEgg` - where the *Frog Eggs* ingredients are searched for.
+- `*ExtractFrom*` - where to look for items to extract DNA traits from.
+- `*Vegetable` - where to look for *Vegetable*s.
+- `*Mushroom` - where to look for *Mushroom*s.
+- `*Purification` - where to look for *Purification Gel*s.
 
 On the product side:
 - `*Butterfly` - where to deposit the created *Butterfly larvae* (all kinds).
@@ -314,6 +323,7 @@ On the product side:
 - `*TreeSeed` - where to deposit the created *Tree Seed*s (all kinds).
 - `*Fish` - where to deposit the created *Fish* (all kinds).
 - `*FrogEgg` - where to deposit the created *Frog Eggs* (all kinds).
+- `*ExtractInto` - where to deposit the extracted DNA traits.
 
 (Note. Unlike other similar mods, you don't need to start the naming with the star `*` character. The defaults shown are just a convention I use.)
 
@@ -323,22 +333,53 @@ it will search the next container. If a destination container is full, it will s
 The *Sequencer* and *Incubator* both require *Mutagen* and you can name different or the same containers where
 they would both get their ingredients from.
 
+You can disable the products in individual sequencers and incubators by opening its recipe screen then clicking on the item to show a big red X.
+
 ### Configuration
 
 <details><summary>akarnokd.theplanetcraftermods.cheatautosequencedna.cfg</summary>
 
 ```
+[Extractor]
+
+## Should the automatic DNA extraction happen?
+# Setting type: Boolean
+# Default value: true
+Enabled = false
+
+## The name of the container to look for items to extract DNA from
+# Setting type: String
+# Default value: *ExtractFrom
+Input = *ExtractFrom
+
+## The name of the container to put the extracted DNA Sequences into
+# Setting type: String
+# Default value: *ExtractInto
+Output = *ExtractInto
+
+## How many items to process per cycle.
+# Setting type: Int32
+# Default value: 5
+Count = 5
+
 [General]
 
 ## Enable debugging with detailed logs (chatty!).
 # Setting type: Boolean
 # Default value: false
-DebugMode = false
+DebugMode = true
 
 ## The maximum distance to look for the named containers. 0 means unlimited.
 # Setting type: Int32
 # Default value: 30
 Range = 30
+
+## Fix for the vanilla bug with switching planets stopping sequencers/incubators
+# Setting type: Boolean
+# Default value: true
+FixPlanetSwitch = true
+
+FontSize = 32
 
 [Incubator]
 
@@ -397,12 +438,17 @@ FrogEgg = *FrogEgg
 # Default value: *Bacteria
 Bacteria = *Bacteria
 
+## Unhide the alternative recipes and outputs.
+# Setting type: Boolean
+# Default value: true
+Unhide = true
+
 [Sequencer]
 
 ## Should the Tree-sequencer auto sequence?
 # Setting type: Boolean
 # Default value: true
-Enabled = true
+Enabled = false
 
 ## The name of the container(s) where to look for fertilizer.
 # Setting type: String
@@ -433,6 +479,11 @@ Phytoplankton = *Phytoplankton
 # Setting type: String
 # Default value: *Fertilizer
 Fertilizer = *Fertilizer
+
+## Unhide the alternative recipes and outputs.
+# Setting type: Boolean
+# Default value: true
+Unhide = true
 ```
 </details>
 
@@ -754,6 +805,8 @@ OutOfBoundsColor = 255,127,106,0
 Items in inventories now stack. The stack count is displayed on the middle of the item.
 
 Use <kbd>Shift-Left Click</kbd> to move a particular stack of items.
+
+Use <kbd>Shift</kbd> to add/remove 10, <kbd>Ctrl+Shift</kbd> to add/remove 100 in the trade screen or interplanetary exchange.
 
 :warning: The game is not meant to be working with stacks of items and I might not have
 found all places where this can be bad. Backup your saves!
@@ -3023,5 +3076,307 @@ Aluminium = true
 # Setting type: Boolean
 # Default value: true
 Zeolite = true
+```
+</details>
+
+## (Save) Async Save
+
+Optimizes the game's save routine to perform its work faster, thereby reducing the pause while playing the game.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.saveasyncsave.cfg</summary>
+
+```
+[General]
+
+## Is this mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging (chatty!)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+```
+</details>
+
+## (UI) Quick Loot
+
+When looking at an openable inventory, show a small panel that allows taking items from it without opening the dialog.
+
+- Use the mouse to scroll down and up a line.
+- Use <kbd>E</kbd> to take one item.
+- Use <kbd>Ctrl+E</kbd> to take all of the items in the line.
+- Use <kbd>R</kbd> to take all items.
+- If [Stacking](#cheat-inventory-stacking) is also present, use <kbd>Shift+E</kbd> to take one stack of items.
+- Use the [Mod Config Menu](#ui-mod-config-menu) to configure the details and visuals of the mod.
+
+Multiplayer - Anyone can use it without the others needing it.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.uiquickloot.cfg</summary>
+
+```
+[General]
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging (chatty!)?
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
+
+[Keys]
+
+## Key to press to take one item.
+# Setting type: String
+# Default value: <Keyboard>/E
+TakeOne = <Keyboard>/E
+
+## Key to press to take all items.
+# Setting type: String
+# Default value: <Keyboard>/R
+TakeAll = <Keyboard>/R
+
+[Settings]
+
+## Allow quick looting on Player containers?
+# Setting type: Boolean
+# Default value: true
+AllowPlayerContainers = true
+
+## Allow quick looting on world containers?
+# Setting type: Boolean
+# Default value: true
+AllowWorldContainers = true
+
+## Allow quick looting on wreck containers?
+# Setting type: Boolean
+# Default value: true
+AllowWreckContainers = true
+
+## Allow quick looting on Auto-Crafters?
+# Setting type: Boolean
+# Default value: true
+AllowAutoCrafters = true
+
+## Allow quick looting on Recycler inputs?
+# Setting type: Boolean
+# Default value: false
+AllowRecyclerIns = false
+
+## Allow quick looting on Recycler outputs?
+# Setting type: Boolean
+# Default value: true
+AllowRecyclerOuts = true
+
+## Allow quick looting on Ore extractors?
+# Setting type: Boolean
+# Default value: true
+AllowOreExtractors = true
+
+## Allow quick looting on Ore crusher inputs?
+# Setting type: Boolean
+# Default value: false
+AllowOreCrusherIns = false
+
+## Allow quick looting on Ore crusher outputs?
+# Setting type: Boolean
+# Default value: true
+AllowOreCrusherOuts = true
+
+## Allow quick looting on Water collectors?
+# Setting type: Boolean
+# Default value: true
+AllowWaterCollectors = true
+
+## Allow quick looting on Food growers?
+# Setting type: Boolean
+# Default value: false
+AllowFoodGrowers = false
+
+## Allow quick looting on Farms?
+# Setting type: Boolean
+# Default value: false
+AllowFarms = false
+
+## Allow quick looting on Gas extractors?
+# Setting type: Boolean
+# Default value: true
+AllowGasExtractors = true
+
+## Allow quick looting on Beehives?
+# Setting type: Boolean
+# Default value: true
+AllowBeehives = true
+
+## Allow quick looting on Butterfly farms?
+# Setting type: Boolean
+# Default value: false
+AllowButterflyFarms = false
+
+## Allow quick looting on Fish farms?
+# Setting type: Boolean
+# Default value: false
+AllowFishflyFarms = false
+
+## Allow quick looting on Frog farms?
+# Setting type: Boolean
+# Default value: false
+AllowFrogFarms = false
+
+## Allow quick looting on Ecosystems?
+# Setting type: Boolean
+# Default value: true
+AllowEcosystems = true
+
+## Allow quick looting on Flower spreaders?
+# Setting type: Boolean
+# Default value: false
+AllowFlowerSpreaders = false
+
+## Allow quick looting on Tree spreaders?
+# Setting type: Boolean
+# Default value: false
+AllowTreeSpreaders = false
+
+## Allow quick looting on Biodomes?
+# Setting type: Boolean
+# Default value: true
+AllowBiodomes = true
+
+## Allow quick looting on Genetic extractors?
+# Setting type: Boolean
+# Default value: false
+AllowGeneticExtractors = false
+
+## Allow quick looting on DNA sequencers?
+# Setting type: Boolean
+# Default value: true
+AllowSequencers = true
+
+## Allow quick looting on Incubators?
+# Setting type: Boolean
+# Default value: true
+AllowIncubators = true
+
+## Allow quick looting on Synthetizers?
+# Setting type: Boolean
+# Default value: false
+AllowSynthetizers = false
+
+## Allow quick looting on Rover storages?
+# Setting type: Boolean
+# Default value: true
+AllowRoverStorages = true
+
+## Allow quick looting on Rover equipments?
+# Setting type: Boolean
+# Default value: false
+AllowRoverEquipments = false
+
+## Allow quick looting on Animal feeders?
+# Setting type: Boolean
+# Default value: false
+AllowAnimalFeeders = false
+
+## Allow quick looting on Optimizers?
+# Setting type: Boolean
+# Default value: false
+AllowOptimizers = false
+
+## When none of the other filters apply, what should be the default logic?
+# Setting type: Boolean
+# Default value: true
+AllowDefault = true
+
+[UI]
+
+## Shift the panel in the X direction by this amount relative to screen center.
+# Setting type: Int32
+# Default value: 100
+PanelX = 100
+
+## Shift the panel in the Y direction by this amount relative to screen center.
+# Setting type: Int32
+# Default value: 0
+PanelY = 0
+
+## The width of the panel.
+# Setting type: Int32
+# Default value: 450
+PanelWidth = 450
+
+## The opacity: 1 - fully opaque, 0 fully transparent.
+# Setting type: Single
+# Default value: 0.99
+PanelOpacity = 0.99
+
+## The number of rows to display at once.
+# Setting type: Int32
+# Default value: 9
+RowCount = 9
+
+## The height of rows in pixels.
+# Setting type: Int32
+# Default value: 32
+RowHeight = 32
+
+## The font size
+# Setting type: Int32
+# Default value: 24
+FontSize = 24
+
+## The margin between visual elements.
+# Setting type: Int32
+# Default value: 5
+Margin = 5
+
+## The width of the amount field.
+# Setting type: Int32
+# Default value: 100
+AmountWidth = 150
+
+## Show the shortcuts tips panel?
+# Setting type: Boolean
+# Default value: true
+ShowShortcuts = true
+
+```
+</details>
+
+## (Feat) Flatlands
+
+Adds a new staring planet, Flatlands, that is completely flat. No mountains, no water. Creative mode recommended.
+
+Create a new world and select Flatlands as the starting planet. Load it as usual.
+
+▮ Multiplayer Everone or No one - Every player should have this mod installed and the same items enabled, or no mod present.
+
+This mod can serve as a template and inspiration for other modders to create more custom planets in the future.
+
+### Configuration
+
+<details><summary>akarnokd.theplanetcraftermods.featflatlands.cfg</summary>
+
+```
+[General]
+
+## Is the mod enabled?
+# Setting type: Boolean
+# Default value: true
+Enabled = true
+
+## Enable detailed logging (chatty!)
+# Setting type: Boolean
+# Default value: false
+DebugMode = false
 ```
 </details>

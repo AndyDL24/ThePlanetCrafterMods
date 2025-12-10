@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -13,16 +13,21 @@ using System.Collections.ObjectModel;
 namespace UIShowConsumableCount
 {
     [BepInPlugin("akarnokd.theplanetcraftermods.uishowconsumablecount", "(UI) Show Consumable Counts", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency("akarnokd.theplanetcraftermods.uitranslationhungarian", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
 
         ConfigEntry<int> fontSize;
+
+        ConfigEntry<bool> debugMode;
 
         static GameObject healthCount;
 
         static GameObject waterCount;
 
         static GameObject oxygenCount;
+
+        static GameObject purifyCount;
 
         readonly Dictionary<DataConfig.UsableType, GameObject> counts = [];
 
@@ -34,12 +39,19 @@ namespace UIShowConsumableCount
             Logger.LogInfo($"Plugin is loaded!");
 
             fontSize = Config.Bind("General", "FontSize", 20, "The font size");
+            debugMode = Config.Bind("General", "DebugMode", false, "Enable debug logging (chatty!)");
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
         }
 
-
+        void LogInfo(string message)
+        {
+            if (debugMode.Value)
+            {
+                Logger.LogInfo(message);
+            }
+        }
 
         void Update()
         {
@@ -67,17 +79,19 @@ namespace UIShowConsumableCount
 
         void Setup()
         {
-            Logger.LogInfo("Begin adding UI elements");
+            LogInfo("Begin adding UI elements");
 
             healthCount = AddTextForGauge(PlayerGaugeHealth.Instance, "FoodConsumableCounter");
             waterCount = AddTextForGauge(PlayerGaugeThirst.Instance, "WaterConsumableCounter");
             oxygenCount = AddTextForGauge(PlayerGaugeOxygen.Instance, "OxygenConsumableCounter");
+            purifyCount = AddTextForGauge(PlayerGaugeToxic.Instance, "PurifyConsumableCounter");
 
             counts[DataConfig.UsableType.Eatable] = healthCount;
             counts[DataConfig.UsableType.Drinkable] = waterCount;
             counts[DataConfig.UsableType.Breathable] = oxygenCount;
+            counts[DataConfig.UsableType.Purify] = purifyCount;
 
-            Logger.LogInfo("Done adding UI elements");
+            LogInfo("Done adding UI elements");
         }
 
         GameObject AddTextForGauge<T>(PlayerGauge<T> gauge, string name) where T : PlayerGauge<T>
@@ -108,11 +122,11 @@ namespace UIShowConsumableCount
             rect.sizeDelta = new Vector2(fs * 5, fs + 5);
             
 
-            Logger.LogInfo("Gauge " + gauge.GetType() + " is at " + 
+            LogInfo("Gauge " + gauge.GetType() + " is at " + 
                 grt.localPosition.x + ", " + grt.localPosition.y + " width " + grt.sizeDelta.x
                 + " height " + grt.sizeDelta.y + " scale " + grt.localScale);
 
-            Logger.LogInfo("Parent " + gauge.GetType() + " is at " +
+            LogInfo("Parent " + gauge.GetType() + " is at " +
                 tr.localPosition.x + ", " + tr.localPosition.y + " scale " + tr.localScale);
 
             return result;
@@ -137,7 +151,7 @@ namespace UIShowConsumableCount
                 consumableCounts.TryGetValue(pair.Key, out int c);
 
                 Text text = pair.Value.GetComponent<Text>();
-                text.text = "x " + c;
+                text.text = string.Format(Localization.GetLocalizedString("ShowConsumableCount_Amount"), c);
 
                 if (c > 0)
                 {
@@ -158,6 +172,28 @@ namespace UIShowConsumableCount
             healthCount?.SetActive(active);
             waterCount?.SetActive(active);
             oxygenCount?.SetActive(active);
+            purifyCount?.SetActive(active);
         }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(Localization), "LoadLocalization")]
+        static void Localization_LoadLocalization(
+            Dictionary<string, Dictionary<string, string>> ___localizationDictionary
+        )
+        {
+            if (___localizationDictionary.TryGetValue("hungarian", out var dict))
+            {
+                dict["ShowConsumableCount_Amount"] = "x {0}";
+            }
+            if (___localizationDictionary.TryGetValue("english", out dict))
+            {
+                dict["ShowConsumableCount_Amount"] = "x {0}";
+            }
+            if (___localizationDictionary.TryGetValue("russian", out dict))
+            {
+                dict["ShowConsumableCount_Amount"] = "{0} шт.";
+            }
+        }
+
     }
 }

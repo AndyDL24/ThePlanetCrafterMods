@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -12,6 +12,7 @@ using System;
 using BepInEx.Logging;
 using Unity.Netcode;
 using LibCommon;
+using System.Diagnostics;
 
 namespace CheatAutoHarvest
 {
@@ -126,56 +127,56 @@ namespace CheatAutoHarvest
                     && Managers.GetManager<PlayersManager>()?.GetActivePlayerController() != null
                 )
                 {
-                    DoHarvest();
+                    var sw = Stopwatch.StartNew();
+                    var pickables = WorldObjectsHandler.Instance.GetPickablesByDronesWorldObjects();
+                    foreach (var wo in new List<WorldObject>(pickables))
+                    {
+                        if (wo.GetIsPlaced())
+                        {
+                            var gid = wo.GetGroup().GetId();
+
+                            Action<string> log = gid.StartsWith("Algae", StringComparison.Ordinal) ? LogAlgae : LogFood;
+
+                            if ((gid.StartsWith("Algae", StringComparison.Ordinal) && gid.EndsWith("Seed", StringComparison.Ordinal) && harvestAlgae.Value)
+                                || (gid.StartsWith("Vegetable", StringComparison.Ordinal) && gid.EndsWith("Growable", StringComparison.Ordinal) && harvestFood.Value)
+                                || (gid.StartsWith("Cook", StringComparison.Ordinal) && gid.EndsWith("Growable", StringComparison.Ordinal) && harvestFood.Value)
+                            )
+                            {
+                                var ag = wo.GetGameObject().AsNullable()?.GetComponentInChildren<ActionGrabable>();
+
+                                if (ag != null && !GrabChecker.IsOnDisplay(ag) && ag.GetCanGrab())
+                                {
+                                    var wo1 = wo;
+                                    new DeferredDepositor()
+                                    {
+                                        inventory = FindInventoryFor(gid, wo.GetPlanetHash()),
+                                        worldObject = wo,
+                                        logger = log,
+                                        OnDepositSuccess = () =>
+                                        {
+                                            /*
+                                            var call = ag.grabedEvent;
+                                            ag.grabedEvent = null;
+                                            call?.Invoke(wo1, false);
+                                            */
+                                        }
+                                    }.Drain();
+                                }
+                            }
+                            else
+                            {
+                                log("Not grabbable: " + DebugWorldObject(wo));
+                            }
+                            yield return null;
+                        }
+                    }
                 }
                 yield return wait;
             }
         }
 
-        static void DoHarvest()
-        {
-            var pickables = WorldObjectsHandler.Instance.GetPickablesByDronesWorldObjects();
-            foreach (var wo in new List<WorldObject>(pickables))
-            {
-                if (wo.GetIsPlaced())
-                {
-                    var gid = wo.GetGroup().GetId();
 
-                    Action<string> log = gid.StartsWith("Algae") ? LogAlgae : LogFood;
-
-                    if ((gid.StartsWith("Algae") && gid.EndsWith("Seed") && harvestAlgae.Value)
-                        || (gid.StartsWith("Vegetable") && gid.EndsWith("Growable") && harvestFood.Value)
-                        || (gid.StartsWith("Cook") && gid.EndsWith("Growable") && harvestFood.Value)
-                    )
-                    {
-                        var ag = wo.GetGameObject().AsNullable()?.GetComponentInChildren<ActionGrabable>();
-
-                        if (ag != null && !GrabChecker.IsOnDisplay(ag) && ag.GetCanGrab())
-                        {
-                            var wo1 = wo;
-                            new DeferredDepositor()
-                            {
-                                inventory = FindInventoryFor(gid),
-                                worldObject = wo,
-                                logger = log,
-                                OnDepositSuccess = () =>
-                                {
-                                    var call = ag.grabedEvent;
-                                    ag.grabedEvent = null;
-                                    call?.Invoke(wo1, false);
-                                }
-                            }.Drain();
-                        }
-                    }
-                    else
-                    {
-                        log("Not grabbable: " + DebugWorldObject(wo));
-                    }
-                }
-            }
-        }
-
-        static IEnumerator<Inventory> FindInventoryFor(string gid)
+        static IEnumerator<Inventory> FindInventoryFor(string gid, int planetHash)
         {
             var containerName = gid;
             if (depositAliases.TryGetValue(gid, out var alias))
@@ -184,16 +185,19 @@ namespace CheatAutoHarvest
             }
             foreach (var candidate in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
-                var txt = candidate.GetText();
-                if (txt != null && txt.Contains(containerName, StringComparison.InvariantCultureIgnoreCase))
+                if (candidate.GetPlanetHash() == planetHash)
                 {
-                    var iid = candidate.GetLinkedInventoryId();
-                    if (iid != 0)
+                    var txt = candidate.GetText();
+                    if (txt != null && txt.Contains(containerName, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        var inv = InventoriesHandler.Instance.GetInventoryById(iid);
-                        if (inv != null)
+                        var iid = candidate.GetLinkedInventoryId();
+                        if (iid != 0)
                         {
-                            yield return inv;
+                            var inv = InventoriesHandler.Instance.GetInventoryById(iid);
+                            if (inv != null)
+                            {
+                                yield return inv;
+                            }
                         }
                     }
                 }
@@ -209,6 +213,7 @@ namespace CheatAutoHarvest
                 str += ", \"" + txt + "\"";
             }
             str += ", " + (wo.GetIsPlaced() ? wo.GetPosition() : "");
+            str += ", planet " + wo.GetPlanetHash();
             return str;
         }
 
@@ -242,8 +247,7 @@ namespace CheatAutoHarvest
                             logger?.Invoke("No suitable non-full inventory found for " + DebugWorldObject(worldObject));
                             break;
                         }
-                        // FIXME grabbed: true ???
-                        InventoriesHandler.Instance.AddWorldObjectToInventory(worldObject, inventory.Current, grabbed: false, OnInventoryCallback);
+                        InventoriesHandler.Instance.AddWorldObjectToInventory(worldObject, inventory.Current, grabbed: true, OnInventoryCallback);
                     }
 
                     if (--wip == 0)

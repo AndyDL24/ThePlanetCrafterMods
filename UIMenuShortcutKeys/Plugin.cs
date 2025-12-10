@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -22,23 +22,18 @@ namespace UIMenuShortcutKeys
 
         const string modUiPinRecipeGuid = "akarnokd.theplanetcraftermods.uipinrecipe";
 
-        ConfigEntry<int> fontSize;
-        ConfigEntry<string> configBuildToggleFilter;
-        ConfigEntry<string> configContainerTakeAll;
-        ConfigEntry<string> configSortPlayerInventory;
-        ConfigEntry<string> configSortOtherInventory;
-        ConfigEntry<bool> debugMode;
+        static ConfigEntry<int> fontSize;
+        static ConfigEntry<string> configContainerTakeAll;
+        static ConfigEntry<string> configSortPlayerInventory;
+        static ConfigEntry<string> configSortOtherInventory;
+        static ConfigEntry<bool> debugMode;
 
         GameObject ourCanvas;
         GameObject shortcutBar;
 
-        InputAction buildToggleFilter;
-        static bool buildToggleFilterState;
-
-        InputAction containerTakeAll;
-
-        InputAction sortPlayerInventory;
-        InputAction sortOtherInventory;
+        static InputAction containerTakeAll;
+        static InputAction sortPlayerInventory;
+        static InputAction sortOtherInventory;
 
 
         static AccessTools.FieldRef<PlayerEquipment, bool> fPlayerEquipmentHasCleanConstructionChip;
@@ -58,35 +53,13 @@ namespace UIMenuShortcutKeys
 
             fontSize = Config.Bind("General", "FontSize", 20, "The font size");
 
-            {
-                configBuildToggleFilter = Config.Bind("General", "BuildToggleFilter", "<Keyboard>/F", "Toggle the tier-filter microchip's effect in the build screen");
-
-                buildToggleFilter = new InputAction(name: "Toggle tier filter", binding: configBuildToggleFilter.Value);
-                buildToggleFilter.Enable();
-            }
-
-            {
-                configContainerTakeAll = Config.Bind("General", "ContainerTakeAll", "<Keyboard>/R", "Take everything from the currently open container");
-
-                containerTakeAll = new InputAction(name: "Take All", binding: configContainerTakeAll.Value);
-                containerTakeAll.Enable();
-            }
-
-            {
-                configSortPlayerInventory = Config.Bind("General", "SortPlayerInventory", "<Keyboard>/G", "Sort the player's inventory");
-
-                sortPlayerInventory = new InputAction(name: "Sort Player Inventory", binding: configSortPlayerInventory.Value);
-                sortPlayerInventory.Enable();
-            }
-
-            {
-                configSortOtherInventory = Config.Bind("General", "SortOtherInventory", "<Keyboard>/T", "Sort the other inventory");
-
-                sortOtherInventory = new InputAction(name: "Sort Player Inventory", binding: configSortOtherInventory.Value);
-                sortOtherInventory.Enable();
-            }
+            configContainerTakeAll = Config.Bind("General", "ContainerTakeAll", "<Keyboard>/R", "Take everything from the currently open container");
+            configSortPlayerInventory = Config.Bind("General", "SortPlayerInventory", "<Keyboard>/G", "Sort the player's inventory");
+            configSortOtherInventory = Config.Bind("General", "SortOtherInventory", "<Keyboard>/T", "Sort the other inventory");
 
             debugMode = Config.Bind("General", "DebugMode", false, "Turn this true to see log messages.");
+
+            UpdateKeyBindings();
 
             fPlayerEquipmentHasCleanConstructionChip = AccessTools.FieldRefAccess<PlayerEquipment, bool>("hasCleanConstructionChip");
             mUiWindowConstructionCreateGrid = AccessTools.Method(typeof(UiWindowConstruction), "CreateGrid");
@@ -235,6 +208,7 @@ namespace UIMenuShortcutKeys
         {
             if (ui == DataConfig.UiType.Construction)
             {
+                /*
                 if (buildToggleFilter.WasPressedThisFrame()) {
                     if (window is UiWindowConstruction uiWindowConstruction)
                     {
@@ -254,6 +228,7 @@ namespace UIMenuShortcutKeys
                         Logger.LogWarning("Unknown container-type window: " + window.GetType());
                     }
                 }
+                */
             }
             else if (ui == DataConfig.UiType.Container || ui == DataConfig.UiType.GroupSelector)
             {
@@ -330,11 +305,13 @@ namespace UIMenuShortcutKeys
                 {
                     entries.Add(CreateEntry("BuildPin", "Middle Click", "Pin/Unpin Recipe (Mod)", shortcutBar.transform));
                 }
+                /*
                 var pm = Managers.GetManager<PlayersManager>().GetActivePlayerController().GetPlayerEquipment();
                 if (pm.GetHasCleanConstructionChip())
                 {
                     entries.Add(CreateEntry("BuildToggleFilter", configBuildToggleFilter.Value.Replace("<Keyboard>/", ""), "Toggle Tier Filter", shortcutBar.transform));
                 }
+                */
             }
             else if (ui == DataConfig.UiType.Container || ui == DataConfig.UiType.GroupSelector)
             {
@@ -367,6 +344,7 @@ namespace UIMenuShortcutKeys
             }
         }
 
+        /*
         static bool originalHasFilter;
 
         [HarmonyPrefix]
@@ -385,13 +363,33 @@ namespace UIMenuShortcutKeys
             var pm = Managers.GetManager<PlayersManager>().GetActivePlayerController().GetPlayerEquipment();
             fPlayerEquipmentHasCleanConstructionChip(pm) = originalHasFilter;
         }
+        */
 
         static void PlanetLoader_HandleDataAfterLoad()
         {
+            /*
             buildToggleFilterState = Managers.GetManager<PlayersManager>()
                 .GetActivePlayerController()
                 .GetPlayerEquipment()
                 .GetHasCleanConstructionChip();
+            */
+        }
+
+        static void UpdateKeyBindings()
+        {
+            containerTakeAll = new InputAction(name: "Take All", binding: configContainerTakeAll.Value);
+            containerTakeAll.Enable();
+
+            sortPlayerInventory = new InputAction(name: "Sort Player Inventory", binding: configSortPlayerInventory.Value);
+            sortPlayerInventory.Enable();
+
+            sortOtherInventory = new InputAction(name: "Sort Player Inventory", binding: configSortOtherInventory.Value);
+            sortOtherInventory.Enable();
+        }
+
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            UpdateKeyBindings();
         }
 
         class ShortcutDisplayEntry

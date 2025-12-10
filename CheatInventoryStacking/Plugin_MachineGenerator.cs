@@ -1,9 +1,11 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
 using SpaceCraft;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace CheatInventoryStacking
 {
@@ -12,51 +14,73 @@ namespace CheatInventoryStacking
         [HarmonyPrefix]
         [HarmonyPatch(typeof(MachineGenerator), "GenerateAnObject")]
         static bool Patch_MachineGenerator_GenerateAnObject(
-            Inventory ___inventory,
+            Inventory ____inventory,
             List<GroupData> ___groupDatas,
             bool ___setGroupsDataViaLinkedGroup,
-            WorldObject ___worldObject,
+            WorldObject ____worldObject,
             List<GroupData> ___groupDatasTerraStage,
-            ref WorldUnitsHandler ___worldUnitsHandler,
-            TerraformStage ___terraStage
+            ref WorldUnitsHandler ____worldUnitsHandler,
+            ref TerraformStage ____terraStage,
+            string ___terraStageNameInPlanetData
         )
         {
             if (stackSize.Value > 1)
             {
                 // TODO these below are mostly duplicated within (Cheat) Machine Deposit Into Remote Containers
                 //      eventually it would be great to get it factored out in some fashion...
-                Log("GenerateAnObject start");
+                var sw = Stopwatch.StartNew();
+                LogMG("GenerateAnObject start " + ____worldObject.GetId() + " (" + ____worldObject.GetGroup().GetId() + ") " + ____worldObject.GetPlanetHash());
 
-                if (___worldUnitsHandler == null)
+                if (____worldUnitsHandler == null)
                 {
-                    ___worldUnitsHandler = Managers.GetManager<WorldUnitsHandler>();
+                    ____worldUnitsHandler = Managers.GetManager<WorldUnitsHandler>();
                 }
-                if (___worldUnitsHandler == null)
+                if (____worldUnitsHandler == null)
                 {
                     return false;
                 }
+                if (____terraStage == null && !string.IsNullOrEmpty(___terraStageNameInPlanetData))
+                {
+                    ____terraStage = typeof(PlanetData).GetField(___terraStageNameInPlanetData).GetValue(Managers.GetManager<PlanetLoader>().GetCurrentPlanetData()) as TerraformStage;
+                }
 
-                Log("    begin ore search");
+
+                LogMG("    begin ore search");
 
                 Group group = null;
-                if (___groupDatas.Count != 0)
+                if (___setGroupsDataViaLinkedGroup)
                 {
-                    List<GroupData> list = new(___groupDatas);
-                    if (___groupDatasTerraStage.Count != 0 && ___worldUnitsHandler.IsWorldValuesAreBetweenStages(___terraStage, null))
+                    List<Group> linkedGroups = ____worldObject.GetLinkedGroups();
+                    if (linkedGroups != null && linkedGroups.Count != 0)
+                    {
+                        group = linkedGroups[UnityEngine.Random.Range(0, linkedGroups.Count)];
+                    }
+                }
+                else if (___groupDatas.Count != 0 || ___groupDatasTerraStage.Count != 0)
+                {
+                    List<GroupData> list = [.. ___groupDatas];
+                    List<Group> linkedGroups = ____worldObject.GetLinkedGroups();
+                    if (linkedGroups != null)
+                    {
+                        foreach (var linkedGroup in linkedGroups)
+                        {
+                            list.Add(linkedGroup.GetGroupData());
+                        }
+                    }
+
+                    var planetId = Managers.GetManager<PlanetLoader>()
+                        .planetList
+                        .GetPlanetFromIdHash(____worldObject.GetPlanetHash())
+                        .GetPlanetId();
+
+                    if (___groupDatasTerraStage.Count != 0 
+                        && ____worldUnitsHandler.IsWorldValuesAreBetweenStages(____terraStage, null, planetId))
                     {
                         list.AddRange(___groupDatasTerraStage);
                     }
-                    group = GroupsHandler.GetGroupViaId(list[UnityEngine.Random.Range(0, list.Count)].id);
-                }
-                if (___setGroupsDataViaLinkedGroup)
-                {
-                    if (___worldObject.GetLinkedGroups() != null && ___worldObject.GetLinkedGroups().Count > 0)
+                    if (list.Count != 0)
                     {
-                        group = ___worldObject.GetLinkedGroups()[UnityEngine.Random.Range(0, ___worldObject.GetLinkedGroups().Count)];
-                    }
-                    else
-                    {
-                        group = null;
+                        group = GroupsHandler.GetGroupViaId(list[UnityEngine.Random.Range(0, list.Count)].id);
                     }
                 }
 
@@ -66,13 +90,9 @@ namespace CheatInventoryStacking
                 {
                     string oreId = group.id;
 
-                    Log("    ore: " + oreId);
+                    LogMG("    ore: " + oreId);
 
-                    var inventory = ___inventory;
-                    if ((IsFindInventoryForGroupIDEnabled?.Invoke() ?? false) && FindInventoryForGroupID != null)
-                    {
-                        inventory = FindInventoryForGroupID(oreId);
-                    }
+                    var inventory = ____inventory;
 
                     if (inventory != null)
                     {
@@ -80,7 +100,7 @@ namespace CheatInventoryStacking
                         {
                             if (!success)
                             {
-                                Log("GenerateAnObject: Machine " + ___worldObject.GetId() + " could not add " + oreId + " to inventory " + inventory.GetId());
+                                LogMG("GenerateAnObject: Machine " + ____worldObject.GetId() + " could not add " + oreId + " to inventory " + inventory.GetId());
                                 if (id != 0)
                                 {
                                     WorldObjectsHandler.Instance.DestroyWorldObject(id);
@@ -90,15 +110,15 @@ namespace CheatInventoryStacking
                     }
                     else
                     {
-                        Log("    No suitable inventory found, ore ignored");
+                        LogMG("    No suitable inventory found, ore ignored");
                     }
                 }
                 else
                 {
-                    Log("    ore: none");
+                    LogMG("    ore: none");
                 }
 
-                Log("GenerateAnObject end");
+                LogMG("GenerateAnObject end. " + sw.Elapsed.TotalMilliseconds + " ms");
                 return false;
             }
             return true;
@@ -108,48 +128,62 @@ namespace CheatInventoryStacking
         /// Conditionally disallow stacking in Ore Extractors, Water and Atmosphere generators.
         /// </summary>
         /// <param name="__instance">The current component used to find the world object's group id</param>
-        /// <param name="_inventory">The inventory of the machine being set.</param>
+        /// <param name="inventory">The inventory of the machine being set.</param>
         [HarmonyPostfix]
         [HarmonyPatch(typeof(MachineGenerator), nameof(MachineGenerator.SetGeneratorInventory))]
-        static void Patch_MachineGenerator_SetGeneratorInventory(MachineGenerator __instance, Inventory _inventory)
+        static void Patch_MachineGenerator_SetGeneratorInventory(MachineGenerator __instance, Inventory inventory)
         {
             var wo = __instance.GetComponent<WorldObjectAssociated>()?.GetWorldObject();
             if (wo != null)
             {
                 var gid = wo.GetGroup().id;
-                if (gid.StartsWith("OreExtractor"))
+                if (gid.StartsWith("OreExtractor", StringComparison.Ordinal))
                 {
                     if (!stackOreExtractors.Value)
                     {
-                        noStackingInventories.Add(_inventory.GetId());
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
-                else if (gid.StartsWith("WaterCollector"))
+                else if (gid.StartsWith("WaterCollector", StringComparison.Ordinal))
                 {
                     if (!stackWaterCollectors.Value)
                     {
-                        noStackingInventories.Add(_inventory.GetId());
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
-                else if (gid.StartsWith("GasExtractor"))
+                else if (gid.StartsWith("GasExtractor", StringComparison.Ordinal))
                 {
                     if (!stackGasExtractors.Value)
                     {
-                        noStackingInventories.Add(_inventory.GetId());
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
-                else if (gid.StartsWith("Beehive"))
+                else if (gid.StartsWith("Beehive", StringComparison.Ordinal))
                 {
                     if (!stackBeehives.Value)
                     {
-                        noStackingInventories.Add(_inventory.GetId());
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
-                else if (gid.StartsWith("Biodome"))
+                else if (gid.StartsWith("Biodome", StringComparison.Ordinal))
                 {
                     if (!stackBiodomes.Value)
                     {
-                        noStackingInventories.Add(_inventory.GetId());
+                        noStackingInventories.Add(inventory.GetId());
+                    }
+                }
+                else if (gid.StartsWith("HarvestingRobot", StringComparison.Ordinal))
+                {
+                    if (!stackHarvestingRobots.Value)
+                    {
+                        noStackingInventories.Add(inventory.GetId());
+                    }
+                }
+                else if (gid.StartsWith("Ecosystem", StringComparison.Ordinal))
+                {
+                    if (!stackEcosystems.Value)
+                    {
+                        noStackingInventories.Add(inventory.GetId());
                     }
                 }
             }

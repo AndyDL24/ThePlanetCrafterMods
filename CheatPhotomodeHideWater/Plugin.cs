@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -32,9 +32,9 @@ namespace CheatPhotomodeHideWater
             bool active = ___uisToHide[0].activeSelf;
             if (Keyboard.current[Key.LeftShift].isPressed)
             {
-                foreach (GameObject gameObject2 in Managers.GetManager<WaterHandler>().GetAllWaterVolumes())
+                foreach (var wv in FindObjectsByType<WaterVolume>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 {
-                    gameObject2.SetActive(active);
+                    wv.gameObject.SetActive(active);
                 }
 
                 foreach (GameObject gameObject2 in FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))

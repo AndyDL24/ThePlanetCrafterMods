@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
@@ -48,7 +48,7 @@ namespace CheatInventoryStacking
 
                         if (____worldObject != null
                             && ____worldObject.GetSetting() == 1
-                            && ____inventory.GetSize() <= GetStackCount(____inventory.GetInsideWorldObjects())
+                            && ____inventory.GetSize() <= GetStackCountList(fInventoryWorldObjectsInInventory(____inventory))
                         )
                         {
                             InventoriesHandler.Instance.RemoveAndDestroyAllItemsFromInventory(____inventory);

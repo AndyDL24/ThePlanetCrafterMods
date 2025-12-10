@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -18,8 +18,8 @@ using Unity.Netcode;
 using BepInEx.Bootstrap;
 using System.Collections;
 using LibCommon;
-using HarmonyLib.Tools;
 using System.Text;
+using System.Runtime.Serialization.Json;
 
 namespace UIHotbar
 {
@@ -58,6 +58,9 @@ namespace UIHotbar
         const string funcGetLoadout = "GetLoadout";
         const string funcSetLoadout = "SetLoadout";
         const string funcReceiveLoadout = "ReceiveLoadout";
+
+        static GameObject hud;
+        static bool visualToggleState;
 
         void Awake()
         {
@@ -273,6 +276,8 @@ namespace UIHotbar
                 {
                     nearbyInventoriesChecker = StartCoroutine(UpdateNearbyInventories());
                 }
+
+                visualToggleState = true;
             }
         }
 
@@ -294,6 +299,7 @@ namespace UIHotbar
                 StopCoroutine(nearbyInventoriesChecker);
                 nearbyInventoriesChecker = null;
             }
+            visualToggleState = true;
         }
 
         IEnumerator UpdateNearbyInventories()
@@ -325,15 +331,38 @@ namespace UIHotbar
             }
         }
 
+        static readonly DictionaryCounter inventoryCounts = new(1024);
+
         void UpdateRender(PlayerMainController player)
         {
             bool isFreeCraft = Managers.GetManager<GameSettingsHandler>().GetCurrentGameSettings().GetFreeCraft();
             WindowsHandler wh = Managers.GetManager<WindowsHandler>();
+            if (hud == null)
+            {
+                hud = GameObject.Find("MainScene/BaseStack/UI/HUD");
+            }
+
+            parent.SetActive((hud == null 
+                || !hud.TryGetComponent<CanvasGroup>(out var cg) 
+                || cg.alpha > 0.97) && visualToggleState);
 
             int oldActiveSlot = activeSlot;
 
+            /*
             Dictionary<string, int> inventoryCounts = [];
             CountInventory(player, inventoryCounts);
+            */
+
+            foreach (var s in slots)
+            {
+                if (s.currentGroup != null)
+                {
+                    inventoryCounts.Clear();
+                    CountInventory(player);
+                    break;
+                }
+            }
+
 
             if (wh != null && !wh.GetHasUiOpen())
             {
@@ -365,7 +394,7 @@ namespace UIHotbar
                                 GroupConstructible gc = (GroupConstructible)slots[k].currentGroup;
 
                                 // activate build mode for slot k
-                                if (isFreeCraft || BuildableCount(inventoryCounts, gc) > 0)
+                                if (isFreeCraft || BuildableCount(gc) > 0)
                                 {
                                     Log("Activating ghost for " + gc.GetId());
 
@@ -424,7 +453,7 @@ namespace UIHotbar
                 {
                     GroupConstructible gc = (GroupConstructible)slot.currentGroup;
 
-                    int buildableCount = BuildableCount(inventoryCounts, gc);
+                    int buildableCount = BuildableCount(gc);
 
                     Image image = slot.image.GetComponent<Image>();
                     Text text = slot.buildCount.GetComponent<Text>();
@@ -449,6 +478,7 @@ namespace UIHotbar
             }
         }
 
+        /*
         static void CountInventory(Inventory inv, Dictionary<string, int> counts)
         {
             foreach (WorldObject wo in inv.GetInsideWorldObjects())
@@ -458,8 +488,36 @@ namespace UIHotbar
                 counts[gid] = c + 1;
             }
         }
+        */
 
+        static void CountInventory(Inventory inv, DictionaryCounter counts)
+        {
+            foreach (WorldObject wo in inv.GetInsideWorldObjects())
+            {
+                counts.Update(wo.GetGroup().id);
+            }
+        }
+
+        /*
         static void CountInventory(PlayerMainController player, Dictionary<string, int> inventoryCounts)
+        {
+            // In multiplayer, these may be null for a few frames
+            if (player.GetPlayerBackpack() == null || player.GetPlayerBackpack().GetInventory() == null)
+            {
+                return;
+            }
+            CountInventory(player.GetPlayerBackpack().GetInventory(), inventoryCounts);
+            foreach (var inv in nearbyInventories)
+            {
+                if (inv != null)
+                {
+                    CountInventory(inv, inventoryCounts);
+                }
+            }
+        }
+        */
+
+        static void CountInventory(PlayerMainController player)
         {
             // In multiplayer, these may be null for a few frames
             if (player.GetPlayerBackpack() == null || player.GetPlayerBackpack().GetInventory() == null) 
@@ -476,6 +534,7 @@ namespace UIHotbar
             }
         }
 
+        /*
         static int BuildableCount(Dictionary<string, int> inventoryCounts, GroupConstructible gc)
         {
             List<Group> recipe = gc.GetRecipe().GetIngredientsGroupInRecipe();
@@ -493,6 +552,33 @@ namespace UIHotbar
             {
                 inventoryCounts.TryGetValue(comp.GetId(), out int inventoryCount);
                 recipeCounts.TryGetValue(comp.GetId(), out int recipeCount);
+
+                craftableCount = Mathf.Min(craftableCount, inventoryCount / recipeCount);
+            }
+            if (craftableCount == int.MaxValue)
+            {
+                craftableCount = 0;
+            }
+            return craftableCount;
+        }
+        */
+        static readonly DictionaryCounter recipeCounts = new(32);
+
+        static int BuildableCount(GroupConstructible gc)
+        {
+            List<Group> recipe = gc.GetRecipe().GetIngredientsGroupInRecipe();
+            // agregate recipe
+            recipeCounts.Clear();
+            foreach (Group group in recipe)
+            {
+                recipeCounts.Update(group.id);
+            }
+
+            int craftableCount = int.MaxValue;
+            foreach (Group comp in recipe)
+            {
+                int inventoryCount = inventoryCounts.CountOf(comp.id);
+                int recipeCount = recipeCounts.CountOf(comp.id);
 
                 craftableCount = Mathf.Min(craftableCount, inventoryCount / recipeCount);
             }
@@ -586,12 +672,16 @@ namespace UIHotbar
         }
         static int WhichNumberKeyWasPressed()
         {
-            for (int i = 0; i < numberKeys.Length; i++)
+            if (!PlayerThirdPersonView_ShortcutEmote())
             {
-                Key k = numberKeys[i];
-                if (Keyboard.current[k].wasPressedThisFrame)
+                var kc = Keyboard.current;
+                for (int i = 0; i < numberKeys.Length; i++)
                 {
-                    return i;
+                    Key k = numberKeys[i];
+                    if (kc[k].wasPressedThisFrame)
+                    {
+                        return i;
+                    }
                 }
             }
             return -1;
@@ -650,6 +740,7 @@ namespace UIHotbar
         {
             bool active = ___uisToHide[0].activeSelf;
             parent?.SetActive(active);
+            visualToggleState = active;
         }
 
         static WorldObject EnsureHiddenContainer()
@@ -920,6 +1011,13 @@ namespace UIHotbar
         public static void OnModConfigChanged(ConfigEntryBase _)
         {
             ModNetworking._debugMode = debugMode.Value;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerInputDispatcher), nameof(PlayerInputDispatcher.OnTogglePlayerNames))]
+        static bool PlayerInputDispatcher_OnTogglePlayerNames()
+        {
+            return Keyboard.current[Key.LeftAlt].isPressed;
         }
     }
 }

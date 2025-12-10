@@ -1,8 +1,7 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx.Bootstrap;
-using HarmonyLib;
 using SpaceCraft;
 using System.Text;
 using Unity.Netcode;

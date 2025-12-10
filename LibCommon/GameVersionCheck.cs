@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
@@ -13,7 +13,7 @@ namespace LibCommon
     /// </summary>
     internal class GameVersionCheck
     {
-        const string TargetVersion = "1.317";
+        const string TargetVersion = "1.607";
 
         static string modName;
 
@@ -27,12 +27,12 @@ namespace LibCommon
         [HarmonyPatch(typeof(Intro), "Start")]
         static void Intro_Start()
         {
-            if (Application.version != TargetVersion)
+            if (Application.version.CompareTo(TargetVersion) < 0)
             {
                 ShowDialog("<b><color=#FFCC00>/!\\ Warning /!\\</color></b>\n\nYou are running the mod\n    <i><color=#FFFF00>"
                     + modName + "</color></i>\ndesigned for game version\n    <i><color=#FFFF00>v"
-                    + TargetVersion + "</color></i>\nwith the game version\n    <i><color=#FFFF00>v" + Application.version
-                    + "</color></i>\n\nPlease wait/check for mod updates and update your mod(s).");
+                    + TargetVersion + "+</color></i>\nwith the game version\n    <i><color=#FFFF00>v" + Application.version
+                    + "</color></i>\n\nPlease make sure you have an\nup-to-date <color=#FFFF00>legitimate copy</color> of the game.");
             }
         }
 
@@ -70,7 +70,7 @@ namespace LibCommon
             trect.sizeDelta = new Vector2(txt.preferredWidth, txt.preferredHeight);
 
             var brect = background.GetComponent<RectTransform>();
-            brect.sizeDelta = trect.sizeDelta + new Vector2(10, 10);
+            brect.sizeDelta = trect.sizeDelta + new Vector2(30, 30);
 
             UnityEngine.Object.Destroy(panel, 120);
         }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -31,6 +31,9 @@ namespace UIShowMultiToolMode
         static GameObject iconBackground;
         static GameObject textObject;
         static GameObject iconObject;
+
+        static GameObject hud;
+        static bool visualsToggleState;
 
         private void Awake()
         {
@@ -140,6 +143,12 @@ namespace UIShowMultiToolMode
                 rectTransform = image.GetComponent<RectTransform>();
                 rectTransform.localPosition = new Vector3(xi, yi, 0);
                 rectTransform.sizeDelta = new Vector2(ics, ics);
+
+                if (hud == null)
+                {
+                    hud = GameObject.Find("MainScene/BaseStack/UI/HUD");
+                }
+                visualsToggleState = true;
             }
         }
         void Show(PlayerMultitool multitool)
@@ -152,6 +161,10 @@ namespace UIShowMultiToolMode
 
             textBackground.SetActive(showText.Value && screen != null);
             textObject.SetActive(showText.Value && screen != null);
+
+            parent.SetActive((hud == null
+                || !hud.TryGetComponent<CanvasGroup>(out var cg)
+                || cg.alpha > 0.99) && visualsToggleState);
 
             if (screen != null)
             {
@@ -191,6 +204,7 @@ namespace UIShowMultiToolMode
             textObject = null;
             iconBackground = null;
             iconObject = null;
+            visualsToggleState = true;
         }
 
         [HarmonyPostfix]
@@ -199,6 +213,7 @@ namespace UIShowMultiToolMode
         {
             bool active = ___uisToHide[0].activeSelf;
             parent?.SetActive(active);
+            visualsToggleState = active;
         }
 
         static void OnModConfigChanged(ConfigEntryBase _)

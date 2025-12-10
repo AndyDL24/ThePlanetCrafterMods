@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -10,8 +10,6 @@ using BepInEx.Configuration;
 using UnityEngine.InputSystem;
 using BepInEx.Logging;
 using TMPro;
-using Unity.Netcode;
-using System.Collections;
 
 namespace UIBeaconText
 {
@@ -57,12 +55,7 @@ namespace UIBeaconText
             fontName = Config.Bind("General", "Font", "Arial.ttf", "The built-in font name, including its extesion.");
             hideVanillaHexagon = Config.Bind("General", "HideVanillaHexagon", false, "If true, the vanilla hexagon is hidde. Toggle via Ctrl+Shift+<toggle key>.");
 
-            if (!displayModeToggle.Value.StartsWith("<Keyboard>/"))
-            {
-                displayModeToggle.Value = "<Keyboard>/" + displayModeToggle.Value;
-            }
-            toggleAction = new InputAction("DisplayModeToggleKey", binding: displayModeToggle.Value);
-            toggleAction.Enable();
+            UpdateKeyBindings();
 
             font = Resources.GetBuiltinResource<Font>(fontName.Value);
 
@@ -209,8 +202,8 @@ namespace UIBeaconText
         }
 
         [HarmonyPostfix]
-        [HarmonyPatch(typeof(MachineBeaconUpdater), "Update")]
-        static void MachineBeaconUpdater_Update(
+        [HarmonyPatch(typeof(MachineBeaconUpdater), "LateUpdate")]
+        static void MachineBeaconUpdater_LateUpdate(
             MachineBeaconUpdater __instance, 
             GameObject ___canvas
         )
@@ -281,6 +274,17 @@ namespace UIBeaconText
                     }
                 }
             }
+            UpdateKeyBindings();
+        }
+
+        static void UpdateKeyBindings()
+        {
+            if (!displayModeToggle.Value.StartsWith("<"))
+            {
+                displayModeToggle.Value = "<Keyboard>/" + displayModeToggle.Value;
+            }
+            toggleAction = new InputAction("DisplayModeToggleKey", binding: displayModeToggle.Value);
+            toggleAction.Enable();
         }
 
         internal class BeaconTextHolder : MonoBehaviour

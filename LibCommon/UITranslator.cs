@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -6,6 +6,7 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using SpaceCraft;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -51,7 +52,8 @@ namespace LibCommon
             string languageFile,
             BaseUnityPlugin parent,
             ManualLogSource Logger, 
-            ConfigFile Config)
+            ConfigFile Config,
+            Action<Dictionary<string, string>> onLabelsReady = null)
         {
             BepInExLoggerFix.ApplyFix();
 
@@ -75,15 +77,19 @@ namespace LibCommon
             foreach (var row in text)
             {
                 var line = row.Trim();
-                if (line.Length != 0 && !line.StartsWith("#"))
+                if (line.Length != 0 && !line.StartsWith("#") && !line.StartsWith("//") && line != "=")
                 {
-                    int idx = line.IndexOf('=');
+                    int idx = FindSeparator(line, '=', '.', '@', '~', '*');
                     if (idx >= 0)
                     {
-                        labels[line[..idx]] = line[(idx + 1)..];
+                        labels[line[..idx]] = line[(idx + 1)..]
+                            .Replace("Ezen dolgozzatok még ", "")
+                            .Replace("halyó", "hajó")
+                        ;
                     }
                 }
             }
+            onLabelsReady?.Invoke(labels);
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(UITranslator));
             var h = Harmony.CreateAndPatchAll(typeof(UITranslator));
@@ -93,6 +99,24 @@ namespace LibCommon
             Logger.LogInfo($"Plugin loaded!");
 
             return h;
+        }
+
+        static int FindSeparator(string line, params char[] separators)
+        {
+            int j = -1;
+            foreach (char c in separators)
+            {
+                int k = line.IndexOf(c);
+                if (k >= 0 && j < 0)
+                {
+                    j = k;
+                }
+                else if (k >= 0 && k < j)
+                {
+                    j = k;
+                }
+            }
+            return j;
         }
 
         static IEnumerator WaitForLocalizationLoad()
@@ -205,6 +229,18 @@ namespace LibCommon
                     __instance.unitLabel.enableAutoSizing = true;
                 }
             }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ToxicCountDisplayer), "OnEnable")]
+        static void ToxicCountDisplayer_OnEanble(ToxicCountDisplayer __instance)
+        {
+            var te = __instance.transform.Find("ToxicArea/ToxicElements");
+            var tmp = te.GetComponent<TextMeshProUGUI>();
+            tmp.autoSizeTextContainer = true;
+            tmp.textWrappingMode = TextWrappingModes.NoWrap;
+            tmp.enabled = false;
+            tmp.enabled = true;
         }
 
         static void ExportLocalization()

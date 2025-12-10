@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using HarmonyLib;
@@ -47,7 +47,9 @@ namespace CheatInventoryStacking
                 var toRemoveFromBackpack = new HashSet<int>();
                 var ingredientsCopy = new List<Group>(ingredients);
 
-                foreach (var wo in backpackInventory.GetInsideWorldObjects())
+                var backpackContents = fInventoryWorldObjectsInInventory(backpackInventory);
+
+                foreach (var wo in backpackContents)
                 {
                     for (int i = 0; i < ingredientsCopy.Count; i++)
                     {

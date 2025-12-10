@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using System.Collections.Generic;
@@ -35,7 +35,13 @@ namespace LibCommon
             "Dolomite",
             "Uraninite",
             "Bauxite",
-            "CosmicQuartz"
+            "CosmicQuartz",
+            "Selenium",
+            "Phosphorus",
+            "ToxicGoo",
+            "ToxicSpores",
+            "Minable-Tungsten",
+            "PristineMushroom"
         ];
 
         internal static readonly string defaultOres = string.Join(",", defaultOreSet);
@@ -53,7 +59,8 @@ namespace LibCommon
             "Butterfly16Larvae",
             "Butterfly17Larvae",
             "Butterfly18Larvae",
-            "Butterfly19Larvae"
+            "Butterfly19Larvae",
+            "Butterfly20Larvae"
         ]);
 
         internal static readonly string defaultFish = string.Join(",",
@@ -71,6 +78,8 @@ namespace LibCommon
             "Fish11Eggs",
             "Fish12Eggs",
             "Fish13Eggs",
+            "Fish14Eggs",
+            "Fish15Eggs",
         ]);
 
         internal static readonly string defaultFrogs = string.Join(",",
@@ -88,7 +97,9 @@ namespace LibCommon
             "FrogGoldEggs",
             "Frog11Eggs",
             "Frog12Eggs",
-            "Frog13Eggs"
+            "Frog13Eggs",
+            "Frog14Eggs",
+            "Frog15Eggs"
         ]);
     }
 }

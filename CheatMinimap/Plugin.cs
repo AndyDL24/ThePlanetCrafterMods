@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -14,10 +14,13 @@ using System.Collections;
 using UnityEngine.InputSystem.Controls;
 using Unity.Netcode;
 using Tessera;
+using UnityEngine.UI;
+using System;
 
 namespace CheatMinimap
 {
     [BepInPlugin("akarnokd.theplanetcraftermods.cheatminimap", "(Cheat) Minimap", PluginInfo.PLUGIN_VERSION)]
+    [BepInDependency("akarnokd.theplanetcraftermods.uitranslationhungarian", BepInDependency.DependencyFlags.SoftDependency)]
     public partial class Plugin : BaseUnityPlugin
     {
         Texture2D grid;
@@ -39,27 +42,43 @@ namespace CheatMinimap
         Texture2D altar;
         Texture2D stair;
         Texture2D drone;
+        Texture2D wreck;
+        Texture2D furniture;
+        Texture2D poster;
+        Texture2D fusion;
+        Texture2D animal;
         Texture2D humbleBarren;
         Texture2D humbleLush;
+        Texture2D seleneaBarren;
+        Texture2D seleneaLush;
+        Texture2D aqualisBarren;
+        Texture2D aqualisLush;
+        Texture2D toxicityBarren;
+        Texture2D toxicityLush;
 
         ConfigEntry<int> mapSize;
         ConfigEntry<int> mapBottom;
         ConfigEntry<int> mapPanelLeft;
         ConfigEntry<int> zoomLevel;
         ConfigEntry<int> maxZoomLevel;
-        ConfigEntry<string> toggleKey;
+        static ConfigEntry<string> toggleKey;
         ConfigEntry<int> zoomInMouseButton;
         ConfigEntry<int> zoomOutMouseButton;
         ConfigEntry<int> autoScanForChests;
         ConfigEntry<int> fixedRotation;
         ConfigEntry<float> alphaBlend;
-        
+
         static ConfigEntry<bool> showLadders;
         static ConfigEntry<bool> showServers;
         static ConfigEntry<bool> showSafes;
         static ConfigEntry<bool> showAltars;
         static ConfigEntry<bool> showStairs;
         static ConfigEntry<bool> showDrones;
+        static ConfigEntry<bool> showWreckDeconstructibles;
+        static ConfigEntry<bool> showWreckFurniture;
+        static ConfigEntry<bool> showWreckPoster;
+        static ConfigEntry<bool> showWreckAnimalEffigie;
+        static ConfigEntry<bool> showWreckFusion;
 
         static ConfigEntry<bool> mapManualVisible;
         static ConfigEntry<int> fontSize;
@@ -67,27 +86,49 @@ namespace CheatMinimap
         static ConfigEntry<string> outOfBoundsColor;
         static string lastOutOfBoundsColor;
 
+        static ConfigEntry<string> toggleXRay;
+        static ConfigEntry<bool> xRay;
+        static ConfigEntry<int> xRayRange;
+        static Font xRayFont;
+        static InputAction xRayAction;
+
         static bool mapVisible = true;
         static int autoScanEnabled = 0;
         static bool coroutineRunning = false;
-        static ConfigEntry<bool> photographMap;
+
+        static InputAction mapAction;
 
         static Plugin self;
 
-        const int primeMapMinX = -2000;
-        const int primeMapMinY = -2000;
-        const int primeMapMaxX = 3000;
-        const int primeMapMaxY = 3000;
+        static readonly Dictionary<string, RectMinMax> mapRects = new()
+        {
+            { "Prime", new RectMinMax(-2000, -2000, 3000, 3000) },
+            { "Humble", new RectMinMax(-2300, -2300, 2700, 2700) },
+            { "Selenea", new RectMinMax(-2000, -2000, 3000, 3000) },
+            { "Aqualis", new RectMinMax(-3000, -3000, 4000, 4000) },
+            { "Toxicity", new RectMinMax(-2200, -2200, 2800, 2800) },
+        };
 
-        const int humbleMapMinY = -2300;
-        const int humbleMapMinX = -2300;
-        const int humbleMapMaxY = 2700;
-        const int humbleMapMaxX = 2700;
-
+        internal class RectMinMax
+        {
+            internal int minX;
+            internal int maxX;
+            internal int minY;
+            internal int maxY;
+            internal RectMinMax(int minX, int minY, int maxX, int maxY)
+            {
+                this.minX = minX;
+                this.maxX = maxX;
+                this.minY = minY;
+                this.maxY = maxY;
+            }
+        }
 
         private void Awake()
         {
             LibCommon.BepInExLoggerFix.ApplyFix();
+
+            self = this;
 
             // Plugin startup logic
             Logger.LogInfo($"Plugin is loaded!");
@@ -116,6 +157,17 @@ namespace CheatMinimap
             drone = LoadPNG(Path.Combine(dir, "drone.png"));
             humbleBarren = LoadPNG(Path.Combine(dir, "humble_barren.png"));
             humbleLush = LoadPNG(Path.Combine(dir, "humble_lush.png"));
+            seleneaBarren = LoadPNG(Path.Combine(dir, "selenea_barren.png"));
+            seleneaLush = LoadPNG(Path.Combine(dir, "selenea_lush.png"));
+            aqualisBarren = LoadPNG(Path.Combine(dir, "aqualis_barren.png"));
+            aqualisLush = LoadPNG(Path.Combine(dir, "aqualis_lush.png"));
+            wreck = LoadPNG(Path.Combine(dir, "wreck.png"));
+            furniture = LoadPNG(Path.Combine(dir, "furniture.png"));
+            poster = LoadPNG(Path.Combine(dir, "poster.png"));
+            animal = LoadPNG(Path.Combine(dir, "animal.png"));
+            fusion = LoadPNG(Path.Combine(dir, "fusion.png"));
+            toxicityBarren = LoadPNG(Path.Combine(dir, "toxicity_barren.jpg"));
+            toxicityLush = LoadPNG(Path.Combine(dir, "toxicity_lush.jpg"));
 
             mapSize = Config.Bind("General", "MapSize", 400, "The minimap panel size");
             mapBottom = Config.Bind("General", "MapBottom", 350, "Panel position from the bottom of the screen");
@@ -127,7 +179,6 @@ namespace CheatMinimap
             zoomOutMouseButton = Config.Bind("General", "ZoomOutMouseButton", 5, "Which mouse button to use for zooming out (0-none, 1-left, 2-right, 3-middle, 4-forward, 5-back)");
             autoScanForChests = Config.Bind("General", "AutoScanForChests", 5, "If nonzero and the minimap is visible, the minimap periodically scans for chests every N seconds. Toggle with Alt+N");
             fixedRotation = Config.Bind("General", "FixedRotation", -1, "If negative, the map rotates on screen. If Positive, the map is fixed to that rotation in degrees (0..360).");
-            photographMap = Config.Bind("General", "PhotographMap", false, "Not meant for end-users. (Photographs the map when pressing U for development purposes.)");
             mapManualVisible = Config.Bind("General", "MapVisible", true, "Should the map be visible?");
             fontSize = Config.Bind("General", "FontSize", 16, "The size of the names of other players, use 0 to disable showing their name.");
             showLadders = Config.Bind("General", "ShowWreckLadders", true, "Show the ladders in the procedural wrecks?");
@@ -138,8 +189,18 @@ namespace CheatMinimap
             showAltars = Config.Bind("General", "ShowAltars", true, "Show the Warden Altars?");
             showStairs = Config.Bind("General", "ShowStairs", true, "Show the stairs in procedural wrecks?");
             showDrones = Config.Bind("General", "ShowDrones", true, "Show the lootable drones?");
+            showWreckDeconstructibles = Config.Bind("General", "ShowWreckDeconstructibles", true, "Show all deconstructibles inside wrecks?");
+            showWreckFurniture = Config.Bind("General", "ShowWreckFurniture", true, "Show wreck furniture?");
+            showWreckPoster = Config.Bind("General", "ShowWreckPoster", true, "Show wreck posters?");
+            showWreckAnimalEffigie = Config.Bind("General", "ShowWreckAnimalEffigie", true, "Show wreck animal effigies?");
+            showWreckFusion = Config.Bind("General", "ShowWreckFusion", true, "Show wreck fusion generators?");
+            toggleXRay = Config.Bind("General", "ToggleXRay", "<Keyboard>/comma", "The key to toggle an overlay showing items of interest through walls/terrain.");
+            xRay = Config.Bind("General", "XRay", false, "Is the XRay mode on, an overlay showing items of interest through walls/terrain?");
+            xRayRange = Config.Bind("General", "XRayRange", 50, "The range to look for items in XRay mode");
+            
+            xRayFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
-            self = this;
+            UpdateKeyBinding();
 
             LibCommon.HarmonyIntegrityCheck.Check(typeof(Plugin));
             Harmony.CreateAndPatchAll(typeof(Plugin));
@@ -182,18 +243,13 @@ namespace CheatMinimap
             PlayersManager pm = Managers.GetManager<PlayersManager>();
             PlayerMainController player = pm?.GetActivePlayerController();
             WindowsHandler wh = Managers.GetManager<WindowsHandler>();
-            if (player != null && wh != null && !wh.GetHasUiOpen())
+            var windowNotOpen = wh != null && !wh.GetHasUiOpen();
+            if (player != null && windowNotOpen)
             {
                 if (!coroutineRunning)
                 {
                     coroutineRunning = true;
                     StartCoroutine(AutoScan());
-                }
-                FieldInfo pi = typeof(Key).GetField(toggleKey.Value.ToString().ToUpper());
-                Key k = Key.N;
-                if (pi != null)
-                {
-                    k = (Key)pi.GetRawConstantValue();
                 }
 
                 if (MouseButtonForIndex(zoomInMouseButton.Value)?.wasPressedThisFrame ?? false)
@@ -205,7 +261,7 @@ namespace CheatMinimap
                     zoomLevel.Value = Mathf.Clamp(zoomLevel.Value - 1, 1, maxZoomLevel.Value);
                 }
 
-                if (Keyboard.current[k].wasPressedThisFrame)
+                if (mapAction.WasPressedThisFrame())
                 {
                     if (Keyboard.current[Key.LeftShift].isPressed)
                     {
@@ -225,17 +281,18 @@ namespace CheatMinimap
                             if (autoScanEnabled == 0)
                             {
                                 chests.Clear();
-                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, "Disabling Chest AutoScan");
+                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("Minimap_DisableChestAutoScan", 2f);
                             }
                             else
                             if (autoScanEnabled == 1)
                             {
-                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, "Begin Chest AutoScan");
+                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("Minimap_BeginChestAutoScan", 2f);
                                 FindChests();
                             }
                             else
                             {
-                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, "Stop Chest AutoScan, Chests found: " + chests.Count);
+                                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, 
+                                    string.Format(Localization.GetLocalizedString("Minimap_StopChestAutoScan"), chests.Count));
                             }
                         } 
                         else
@@ -254,36 +311,129 @@ namespace CheatMinimap
                     }
                 }
             }
-            UpdatePhoto();
+            UpdateXRay(player, windowNotOpen);
+        }
+
+        static GameObject xrayCanvas;
+
+
+        void UpdateXRay(PlayerMainController player, bool windowNotOpen)
+        {
+            if (xRayAction.WasPressedThisFrame())
+            {
+                xRay.Value = !xRay.Value;
+            }
+            if (!xRay.Value || player == null)
+            {
+                if (xrayCanvas != null)
+                {
+                    Destroy(xrayCanvas);
+                    xrayCanvas = null;
+                }
+                return;
+            }
+
+            if (xrayCanvas == null)
+            {
+                xrayCanvas = new GameObject("Minimap_XRay");
+                var canvas = xrayCanvas.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 500;
+            }
+
+            xrayCanvas.SetActive(windowNotOpen);
+
+            List<GameObject> chestsInRange = [];
+            foreach (var chest in chests)
+            {
+                if (chest != null && Vector3.Distance(chest.transform.position, player.transform.position) <= xRayRange.Value)
+                {
+                    chestsInRange.Add(chest);
+                }
+            }
+
+            while (xrayCanvas.transform.childCount < chestsInRange.Count)
+            {
+                var entry = new GameObject("XRayElement");
+                entry.SetActive(false);
+                entry.transform.SetParent(xrayCanvas.transform, false);
+                var text = entry.AddComponent<Text>();
+                text.fontSize = fontSize.Value;
+                text.font = xRayFont;
+                text.color = Color.white;
+                text.supportRichText = true;
+                text.alignment = TextAnchor.MiddleCenter;
+
+                var outline = entry.AddComponent<Outline>();
+                outline.effectColor = Color.black;
+                outline.effectDistance = new Vector2(1, -1);
+            }
+            for (int i = xrayCanvas.transform.childCount - 1; i >= chestsInRange.Count; i--)
+            {
+                Destroy(xrayCanvas.transform.GetChild(i).gameObject);
+            }
+
+            for (int i = 0; i < chestsInRange.Count; i++)
+            {
+                GameObject chest = chestsInRange[i];
+                var xrayChild = xrayCanvas.transform.GetChild(i).gameObject;
+                var text = xrayChild.GetComponent<Text>();
+
+                var pos = chest.transform.position;
+                text.text = chest.name.Replace("(Clone)", "") + "\n(" + ((int)Vector3.Distance(player.transform.position, pos)) + " m)";
+
+                var xy = Camera.main.WorldToScreenPoint(pos) - new Vector3(Screen.width / 2, Screen.height / 2, 0);
+                var heading = pos - Camera.main.transform.position;
+                var behind = Vector3.Dot(Camera.main.transform.forward, heading) < 0;
+
+                if (!behind)
+                {
+                    var rt = text.GetComponent<RectTransform>();
+                    rt.localPosition = xy;
+                    rt.sizeDelta = new Vector2(text.preferredWidth, text.preferredHeight);
+                }
+
+                xrayChild.SetActive(!behind);
+            }
+
         }
 
         void FindChests()
         {
             chests.Clear();
 
+            var ih = ProceduralInstancesHandler.Instance;
+
             foreach (ActionOpenable ia in FindObjectsByType<ActionOpenable>(FindObjectsSortMode.None))
             {
                 try
                 {
                     var go = ia.gameObject;
-                    if (go.name.Contains("WorldContainer") 
-                        || go.name.Contains("GoldenContainer") 
-                        || go.name.Contains("WorldCanister")
-                        || go.name.Contains("WreckContainer")
-                        || go.name.Contains("WreckCanister")
+                    var parentName = go.transform.parent != null ? go.transform.parent.name : "";
+
+                    if ((go.name.Contains("WorldContainer", StringComparison.Ordinal) && !parentName.StartsWith("WorldRoverWithContainer", StringComparison.Ordinal))
+                        || go.name.Contains("GoldenContainer", StringComparison.Ordinal) 
+                        || go.name.Contains("WorldCanister", StringComparison.Ordinal)
+                        || go.name.Contains("WreckContainer", StringComparison.Ordinal)
+                        || go.name.Contains("WreckCanister", StringComparison.Ordinal)
                     )
                     {
+
                         chests.Add(go);
                     }
                     else if (
-                        ((go.name.Contains("WreckSafe") || go.name.Contains("WorldSafe")) && showSafes.Value)
+                        ((go.name.Contains("WreckSafe", StringComparison.Ordinal) || go.name.Contains("WorldSafe", StringComparison.Ordinal)) && showSafes.Value)
                         || (go.name.Contains("Warden") && showAltars.Value)
-                        || (showDrones.Value && (!go.name.Contains("Clone") && go.name.StartsWith("Drone") && go.name.Length > 5))
-                        || go.name.Contains("WorldWardrobe")
+                        || (showDrones.Value && (!go.name.Contains("Clone", StringComparison.Ordinal) && go.name.StartsWith("Drone", StringComparison.Ordinal) && go.name.Length > 5))
+                        || go.name.Contains("WorldWardrobe", StringComparison.Ordinal)
+                        || go.name.Contains("Satellite", StringComparison.Ordinal)
+                        || (go.name.Contains("WorldContainer", StringComparison.Ordinal) && parentName.StartsWith("WorldRoverWithContainer", StringComparison.Ordinal))
+                        || (go.name.Contains("FusionGenerator", StringComparison.Ordinal) && showWreckFusion.Value)
                     )
                     {
                         var invAssoc = go.GetComponentInParent<InventoryAssociated>();
                         var invAssocProxy = go.GetComponentInParent<InventoryAssociatedProxy>();
+                        var hideWhenFull = go.name.Contains("FusionGenerator", StringComparison.Ordinal);
 
                         if (invAssoc != null && (invAssocProxy == null || (NetworkManager.Singleton?.IsServer ?? false)))
                         {
@@ -291,7 +441,7 @@ namespace CheatMinimap
                             if (id > 0)
                             {
                                 var inv = InventoriesHandler.Instance.GetInventoryById(id);
-                                if (inv != null && inv.GetInsideWorldObjects().Count != 0)
+                                if (ShouldShowIfNonEmptyOrNotFull(inv, hideWhenFull))
                                 {
                                     chests.Add(go);
                                 }
@@ -301,7 +451,7 @@ namespace CheatMinimap
                                 if (go.TryGetComponent<WorldUniqueId>(out var wuid))
                                 {
                                     var inv = InventoriesHandler.Instance.GetInventoryById(wuid.GetWorldUniqueId());
-                                    if (inv == null || inv.GetInsideWorldObjects().Count != 0)
+                                    if (inv == null || ShouldShowIfNonEmptyOrNotFull(inv, hideWhenFull))
                                     {
                                         chests.Add(go);
                                     }
@@ -317,7 +467,7 @@ namespace CheatMinimap
                             var go1 = go;
                             invAssocProxy.GetInventory((inv, wo) =>
                             {
-                                if (inv != null && inv.GetInsideWorldObjects().Count != 0)
+                                if (ShouldShowIfNonEmptyOrNotFull(inv, hideWhenFull))
                                 {
                                     chests.Add(go1);
                                 }
@@ -337,7 +487,7 @@ namespace CheatMinimap
                 {
                     if (am != null && am.transform.parent != null 
                         && am.transform.parent.parent != null
-                        && am.transform.parent.parent.gameObject.name.Contains("LadderWreck"))
+                        && am.transform.parent.parent.gameObject.name.Contains("LadderWreck", StringComparison.Ordinal))
                     {
                         var go = am.transform.parent.parent.gameObject;
                         if (ladderSet.Add(go))
@@ -345,7 +495,7 @@ namespace CheatMinimap
                             chests.Add(go);
                         }
                     }
-                    if (am != null && am.gameObject.name.Contains("ladder_"))
+                    if (am != null && am.gameObject.name.Contains("ladder_", StringComparison.Ordinal))
                     {
                         var go = am.transform.parent.gameObject;
                         if (ladderSet.Add(go))
@@ -355,16 +505,90 @@ namespace CheatMinimap
                     }
                 }
             }
-            if (showServers.Value)
+            if (showServers.Value || showWreckDeconstructibles.Value
+                || showWreckFurniture.Value)
             {
                 foreach (var id in FindObjectsByType<ActionDeconstructible>(FindObjectsSortMode.None))
                 {
-                    if (id.transform.parent != null && id.transform.parent.name.Contains("WreckServer"))
+                    if (showServers.Value)
                     {
-                        chests.Add(id.transform.parent.gameObject);
+                        if (id.transform.parent != null 
+                            && (id.transform.parent.name.Contains("WreckServer", StringComparison.Ordinal)
+                            || id.transform.parent.name.Contains("WorldServer", StringComparison.Ordinal)))
+                        {
+                            chests.Add(id.transform.parent.gameObject);
+                        }
+                    }
+                    var tr = id.transform;
+
+                    while (tr != null)
+                    {
+
+                        string name1 = tr.gameObject.name;
+                        if (showWreckDeconstructibles.Value
+                            && (name1.Contains("WreckPilar", StringComparison.Ordinal) || name1.Contains("WorldPilar", StringComparison.Ordinal)))
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        if (showWreckFurniture.Value
+                            && (IsFurniture(name1))
+                            && ih != null && ih.IsInsideAnInstance(tr.position, false)
+                        )
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        if (showServers.Value
+                            && name1.StartsWith("Server", StringComparison.Ordinal)
+                            && ih != null && ih.IsInsideAnInstance(tr.position, false)
+                        )
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        if (showSafes.Value
+                            && name1.StartsWith("Vault", StringComparison.Ordinal)
+                            && ih != null && ih.IsInsideAnInstance(tr.position, false)
+                        )
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        tr = tr.parent;
                     }
                 }
             }
+            if (showWreckPoster.Value || showWreckAnimalEffigie.Value)
+            {
+                foreach (var id in FindObjectsByType<ActionGrabable>(FindObjectsSortMode.None))
+                {
+                    var tr = id.transform;
+
+                    while (tr != null)
+                    {
+                        string name1 = tr.gameObject.name;
+                        if (showWreckPoster.Value 
+                            && name1.StartsWith("Poster", StringComparison.Ordinal)
+                            && ih != null && ih.IsInsideAnInstance(tr.position, false)
+                        )
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        if (showWreckAnimalEffigie.Value 
+                            && name1.StartsWith("AnimalEffigie", StringComparison.Ordinal)
+                            && ih != null && ih.IsInsideAnInstance(tr.position, false)
+                        )
+                        {
+                            chests.Add(tr.gameObject);
+                            break;
+                        }
+                        tr = tr.parent;
+                    }
+                }
+            }
+            
             foreach (var p in FindObjectsByType<MachinePortal>(FindObjectsSortMode.None))
             {
                 chests.Add(p.gameObject);
@@ -374,7 +598,7 @@ namespace CheatMinimap
             {
                 foreach (var id in FindObjectsByType<TesseraTile>(FindObjectsSortMode.None))
                 {
-                    if (id.name.Contains("Stair"))
+                    if (id.name.Contains("Stair", StringComparison.Ordinal))
                     {
                         chests.Add(id.transform.gameObject);
                     }
@@ -383,8 +607,43 @@ namespace CheatMinimap
 
             if (autoScanEnabled == 0)
             {
-                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, "Found " + chests.Count + " chests");
+                Managers.GetManager<BaseHudHandler>().DisplayCursorText("", 2f, 
+                    string.Format(Localization.GetLocalizedString("Minimap_FoundChestAutoScan"), chests.Count));
             }
+        }
+
+        static bool ShouldShowIfNonEmptyOrNotFull(Inventory inv, bool checkFull)
+        {
+            if (inv == null)
+            {
+                return false;
+            }
+            int n = inv.GetInsideWorldObjects().Count;
+            if (!checkFull)
+            {
+                return n != 0;
+            }
+            return n != inv.GetSize();
+        }
+
+        static bool IsFurniture(string name1)
+        {
+            return name1.StartsWith("Table", StringComparison.Ordinal)
+                                || name1.StartsWith("Chair", StringComparison.Ordinal)
+                                || name1.StartsWith("Counter", StringComparison.Ordinal)
+                                || name1.StartsWith("Fridge", StringComparison.Ordinal)
+                                || name1.StartsWith("Trashcan", StringComparison.Ordinal)
+                                || name1.StartsWith("Faucet", StringComparison.Ordinal)
+                                || name1.StartsWith("Desktop", StringComparison.Ordinal)
+                                || name1.StartsWith("ExerciseBike", StringComparison.Ordinal)
+                                || name1.StartsWith("FlowerPot", StringComparison.Ordinal)
+                                || name1.StartsWith("Library", StringComparison.Ordinal)
+                                || name1.StartsWith("PlanetViewer", StringComparison.Ordinal)
+                                || name1.StartsWith("Pooltable", StringComparison.Ordinal)
+                                || name1.StartsWith("Shelves", StringComparison.Ordinal)
+                                || name1.StartsWith("Treadmill", StringComparison.Ordinal)
+                                || name1.StartsWith("TreePlanter", StringComparison.Ordinal)
+                                || name1.StartsWith("Ivy", StringComparison.Ordinal);
         }
 
         void OnGUI()
@@ -409,21 +668,28 @@ namespace CheatMinimap
 
                     Texture2D theMap = grid;
 
-                    // calibrated to the given map
-                    float playerCenterX = (primeMapMaxX + primeMapMinX) / 2;
-                    float playerCenterY = (primeMapMaxY + primeMapMinY) / 2;
-                    float mapWidth = primeMapMaxX - primeMapMinX;
-                    float mapHeight = primeMapMaxY - primeMapMinY;
+                    var pd = Managers.GetManager<PlanetLoader>()?.GetCurrentPlanetData();
 
-                    var pd = Managers.GetManager<PlanetLoader>()?.GetPlanetData();
-
+                    RectMinMax mapMinMax = default;
+                    if (pd == null || !mapRects.TryGetValue(pd.id, out mapMinMax))
+                    {
+                        mapMinMax = mapRects["Prime"];
+                    }
                     var isPrime = pd != null && (pd.id == "" || pd.id == "Prime");
+
+                    // calibrated to the given map
+                    float playerCenterX = (mapMinMax.maxX + mapMinMax.minX) / 2;
+                    float playerCenterY = (mapMinMax.maxY + mapMinMax.minY) / 2;
+                    float mapWidth = mapMinMax.maxX - mapMinMax.minX;
+                    float mapHeight = mapMinMax.maxY - mapMinMax.minY;
+
+
                     if (isPrime)
                     {
                         if (achievementsHandler != null && worldUnitsHandler != null)
                         {
-                            float currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
-                            float minT = achievementsHandler.stageMoss.GetStageStartValue();
+                            var currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
+                            var minT = pd.startMossTerraStage.GetStageStartValue();
                             if (currT >= 425000000000f)
                             {
                                 theMap = endgame;
@@ -444,19 +710,57 @@ namespace CheatMinimap
                     }
                     if (pd != null && pd.id == "Humble")
                     {
-                        playerCenterX = (humbleMapMaxX + humbleMapMinX) / 2;
-                        playerCenterY = (humbleMapMaxY + humbleMapMinY) / 2;
-                        mapWidth = humbleMapMaxX - humbleMapMinX;
-                        mapHeight = humbleMapMaxY - humbleMapMinY;
                         theMap = humbleBarren;
 
                         if (achievementsHandler != null && worldUnitsHandler != null)
                         {
-                            float currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
-                            float minT = achievementsHandler.stageMoss.GetStageStartValue();
+                            var currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
+                            var minT = pd.startMossTerraStage.GetStageStartValue();
                             if (currT >= minT)
                             {
                                 theMap = humbleLush;
+                            }
+                        }
+                    }
+                    if (pd != null && pd.id == "Selenea")
+                    {
+                        theMap = seleneaBarren;
+
+                        if (achievementsHandler != null && worldUnitsHandler != null)
+                        {
+                            var currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
+                            var minT = pd.startMossTerraStage.GetStageStartValue();
+                            if (currT >= minT)
+                            {
+                                theMap = seleneaLush;
+                            }
+                        }
+                    }
+                    if (pd != null && pd.id == "Aqualis")
+                    {
+                        theMap = aqualisBarren;
+
+                        if (achievementsHandler != null && worldUnitsHandler != null)
+                        {
+                            var currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
+                            var minT = pd.startMossTerraStage.GetStageStartValue();
+                            if (currT >= minT)
+                            {
+                                theMap = aqualisLush;
+                            }
+                        }
+                    }
+                    if (pd != null && pd.id == "Toxicity")
+                    {
+                        theMap = toxicityBarren;
+
+                        if (achievementsHandler != null && worldUnitsHandler != null)
+                        {
+                            var currT = worldUnitsHandler.GetUnit(DataConfig.WorldUnitType.Terraformation).GetValue();
+                            var minT = pd.startMossTerraStage.GetStageStartValue();
+                            if (currT >= minT)
+                            {
+                                theMap = toxicityLush;
                             }
                         }
                     }
@@ -515,12 +819,12 @@ namespace CheatMinimap
 
                     float mapLeft = playerCenterX - mapWidth / 2;
                     float mapTop = playerCenterY + mapHeight / 2;
-                    foreach (GameObject go in new List<GameObject>(chests))
+                    for (int i = chests.Count - 1; i >= 0; i--)
                     {
-                        
+                        GameObject go = chests[i];
                         try
                         {
-                            if (go.activeSelf)
+                            if (go != null && go.activeSelf)
                             {
                                 Vector3 vec = go.transform.position;
 
@@ -537,47 +841,77 @@ namespace CheatMinimap
                                     chestW = 10;
                                     chestH = 20;
                                 }
-                                else if (nm.Contains("WreckServer"))
+                                else if (nm.Contains("WreckServer", StringComparison.Ordinal) || nm.StartsWith("Server", StringComparison.Ordinal) || nm.StartsWith("WorldServer", StringComparison.Ordinal))
                                 {
                                     img = server;
                                     chestW = 10;
                                     chestH = 15;
                                 }
-                                else if (nm.Contains("GoldenContainer"))
+                                else if (nm.Contains("GoldenContainer", StringComparison.Ordinal))
                                 {
                                     img = golden;
                                 }
-                                else if (nm.Contains("WorldContainerStarform"))
+                                else if (nm.Contains("WorldContainerStarform", StringComparison.Ordinal))
                                 {
                                     img = starform;
                                 }
-                                else if (nm.Contains("WreckSafe") || nm.Contains("WorldSafe"))
+                                else if (nm.Contains("WreckSafe", StringComparison.Ordinal) || nm.Contains("WorldSafe", StringComparison.Ordinal) || nm.StartsWith("Vault", StringComparison.Ordinal))
                                 {
                                     img = safe;
                                     chestW = 16;
                                     chestH = 16;
                                 }
-                                else if (nm.Contains("Portal"))
+                                else if (nm.Contains("Portal", StringComparison.Ordinal))
                                 {
                                     img = portal;
                                     chestW = 10;
                                     chestH = 12;
                                 }
-                                else if (nm.Contains("Warden"))
+                                else if (nm.Contains("Warden", StringComparison.Ordinal))
                                 {
                                     img = altar;
                                     chestW = 12;
                                     chestH = 14;
                                 }
-                                else if (nm.Contains("Stair"))
+                                else if (nm.Contains("Stair", StringComparison.Ordinal))
                                 {
                                     img = stair;
                                     chestW = 14;
                                     chestH = 14;
                                 }
-                                else if (nm.Contains("Drone"))
+                                else if (nm.Contains("Drone", StringComparison.Ordinal))
                                 {
                                     img = drone;
+                                    chestW = 16;
+                                    chestH = 16;
+                                }
+                                else if (nm.Contains("WreckPilar", StringComparison.Ordinal))
+                                {
+                                    img = wreck;
+                                    chestW = 16;
+                                    chestH = 16;
+                                }
+                                else if (IsFurniture(nm))
+                                {
+                                    img = furniture;
+                                    chestW = 16;
+                                    chestH = 16;
+                                }
+                                else if (nm.Contains("Poster", StringComparison.Ordinal))
+                                {
+                                    img = poster;
+                                    chestW = 16;
+                                    chestH = 16;
+                                }
+                                else if (nm.StartsWith("AnimalEffigie", StringComparison.Ordinal))
+                                {
+                                    img = animal;
+                                    chestW = 16;
+                                    chestH = 16;
+                                }
+                                else if (nm.Contains("FusionGenerator", StringComparison.Ordinal))
+                                {
+                                    img = fusion;
                                     chestW = 16;
                                     chestH = 16;
                                 }
@@ -602,12 +936,12 @@ namespace CheatMinimap
                             }
                             else
                             {
-                                chests.Remove(go);
+                                chests.RemoveAt(i);
                             }
                         } 
                         catch
                         {
-                            chests.Remove(go);
+                            chests.RemoveAt(i);
                         }
 
                     }
@@ -742,5 +1076,56 @@ namespace CheatMinimap
             UiWindowPause_OnQuit();
         }
 
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(Localization), "LoadLocalization")]
+        static void Localization_LoadLocalization(
+            Dictionary<string, Dictionary<string, string>> ___localizationDictionary
+        )
+        {
+            if (___localizationDictionary.TryGetValue("hungarian", out var dict))
+            {
+                dict["Minimap_DisableChestAutoScan"] = "Tároló keresés kikapcsolása";
+                dict["Minimap_BeginChestAutoScan"] = "Tároló keresés indítása";
+                dict["Minimap_StopChestAutoScan"] = "Tároló keresés leállítása, {0} tároló található";
+                dict["Minimap_FoundChestAutoScan"] = "{0} tároló található";
+            }
+            if (___localizationDictionary.TryGetValue("english", out dict))
+            {
+                dict["Minimap_DisableChestAutoScan"] = "Disable Chest Auto Scan";
+                dict["Minimap_BeginChestAutoScan"] = "Begin Chest Auto Scan";
+                dict["Minimap_StopChestAutoScan"] = "Stop Chest Auto Scan, found {0} chest(s)";
+                dict["Minimap_FoundChestAutoScan"] = "Found {0} chest(s)";
+            }
+            if (___localizationDictionary.TryGetValue("russian", out dict))
+            {
+                dict["Minimap_DisableChestAutoScan"] = "Отключение Автосканирования ящиков";
+                dict["Minimap_BeginChestAutoScan"] = "Начать автосканирование ящиков";
+                dict["Minimap_StopChestAutoScan"] = "Остановить автосканирование ящиков. Найдено ящиков: {0}";
+                dict["Minimap_FoundChestAutoScan"] = "Найдено {0} ящиков";
+            }
+        }
+
+        static void UpdateKeyBinding()
+        {
+            if (!toggleXRay.Value.StartsWith("<", StringComparison.Ordinal))
+            {
+                toggleXRay.Value = "<Keyboard>/" + toggleXRay.Value;
+            }
+
+            xRayAction = new InputAction("Toggle XRay Mode", binding: toggleXRay.Value);
+            xRayAction.Enable();
+
+            if (!toggleKey.Value.StartsWith("<", StringComparison.Ordinal))
+            {
+                toggleKey.Value = "<Keyboard>/" + toggleKey.Value;
+            }
+
+            mapAction = new InputAction("Toggle minimap", binding: toggleKey.Value);
+            mapAction.Enable();
+        }
+        public static void OnModConfigChanged(ConfigEntryBase _)
+        {
+            UpdateKeyBinding();
+        }
     }
 }

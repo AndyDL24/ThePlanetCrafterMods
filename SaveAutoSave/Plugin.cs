@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022-2024, David Karnok & Contributors
+﻿// Copyright (c) 2022-2025, David Karnok & Contributors
 // Licensed under the Apache License, Version 2.0
 
 using BepInEx;
@@ -45,7 +45,7 @@ namespace SaveAutoSave
         {
             for (; ; )
             {
-                yield return new WaitForSeconds(saveDelay.Value * 60);
+                yield return new WaitForSecondsRealtime(saveDelay.Value * 60);
 
                 if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsServer)
                 {
@@ -60,9 +60,14 @@ namespace SaveAutoSave
                     {
                         logger.LogWarning("Unable to find the SavedDataHandler; can't auto save");
                     } 
-                    else 
+                    else
+                    if (!sdh.IsSaving())
                     { 
                         sdh.SaveWorldData(null);
+                    }
+                    else
+                    {
+                        logger.LogInfo("Game already saving, skipping this one.");
                     }
                 }
             }
